@@ -3,6 +3,7 @@ import type { KitItem, KitSection } from "../data";
 export interface ImportResult {
   sections: KitSection[];
   days: number;
+  listTitle: string;
 }
 
 export function importFromJson(file: File): Promise<ImportResult> {
@@ -45,7 +46,11 @@ export function importFromJson(file: File): Promise<ImportResult> {
           ? raw.tripDays
           : 7;
 
-        resolve({ sections, days });
+        const listTitle = typeof raw.listTitle === "string" && raw.listTitle.trim()
+          ? raw.listTitle.trim()
+          : "Bikepacking kit list";
+
+        resolve({ sections, days, listTitle });
       } catch (err) {
         reject(err instanceof Error ? err : new Error("Failed to parse file"));
       }
@@ -55,9 +60,10 @@ export function importFromJson(file: File): Promise<ImportResult> {
   });
 }
 
-export function exportToJson(sections: KitSection[], days: number) {
+export function exportToJson(sections: KitSection[], days: number, listTitle: string) {
   const data = {
     exportedAt: new Date().toISOString(),
+    listTitle,
     tripDays: days,
     sections: sections.map((s) => ({
       id: s.id,

@@ -26,6 +26,15 @@ export default function App() {
     }
   });
 
+  const [listTitle, setListTitle] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem("pakka-title");
+      return saved ? saved : "Bikepacking kit list";
+    } catch {
+      return "Bikepacking kit list";
+    }
+  });
+
   const [addingSection, setAddingSection] = useState(false);
 
   useEffect(() => {
@@ -35,6 +44,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("pakka-days", String(days));
   }, [days]);
+
+  useEffect(() => {
+    localStorage.setItem("pakka-title", listTitle);
+  }, [listTitle]);
 
   const allItems = sections.flatMap((s) => s.items);
   const checkedCount = allItems.filter((i) => i.checked).length;
@@ -109,9 +122,10 @@ export default function App() {
 
   function handleImport(file: File) {
     importFromJson(file)
-      .then(({ sections, days }) => {
+      .then(({ sections, days, listTitle }) => {
         setSections(sections);
         setDays(days);
+        setListTitle(listTitle);
       })
       .catch((err: Error) => alert(`Import failed: ${err.message}`));
   }
@@ -125,6 +139,10 @@ export default function App() {
     );
   }
 
+  function clearAllGear() {
+    setSections([]);
+  }
+
   return (
     <div className="app">
       <AppHeader
@@ -133,8 +151,11 @@ export default function App() {
         checkedItems={checkedCount}
         totalItems={allItems.length}
         onReset={resetAll}
-        onExport={() => exportToJson(sections, days)}
+        onExport={() => exportToJson(sections, days, listTitle)}
         onImport={handleImport}
+        listTitle={listTitle}
+        onListTitleChange={setListTitle}
+        onClearAll={clearAllGear}
       />
 
       <main className="app-main">

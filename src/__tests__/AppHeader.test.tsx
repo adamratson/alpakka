@@ -12,6 +12,9 @@ function setup(overrides = {}) {
     onReset: vi.fn(),
     onExport: vi.fn(),
     onImport: vi.fn(),
+    listTitle: 'Bikepacking kit list',
+    onListTitleChange: vi.fn(),
+    onClearAll: vi.fn(),
     ...overrides,
   }
   render(<AppHeader {...props} />)
@@ -22,6 +25,39 @@ describe('AppHeader', () => {
   it('renders the app title', () => {
     setup()
     expect(screen.getByRole('heading', { name: 'Pakka' })).toBeInTheDocument()
+  })
+
+  it('shows the list title as a button', () => {
+    setup({ listTitle: 'My adventure list' })
+    expect(screen.getByRole('button', { name: /My adventure list/i })).toBeInTheDocument()
+  })
+
+  it('clicking the list title button shows an editable input', async () => {
+    const user = userEvent.setup()
+    setup({ listTitle: 'My adventure list' })
+    await user.click(screen.getByRole('button', { name: /My adventure list/i }))
+    expect(screen.getByRole('textbox', { name: 'List title' })).toBeInTheDocument()
+  })
+
+  it('pressing Enter on the title input commits the new title', async () => {
+    const user = userEvent.setup()
+    const props = setup({ listTitle: 'Old title' })
+    await user.click(screen.getByRole('button', { name: /Old title/i }))
+    const input = screen.getByRole('textbox', { name: 'List title' })
+    await user.clear(input)
+    await user.type(input, 'New title{Enter}')
+    expect(props.onListTitleChange).toHaveBeenCalledWith('New title')
+  })
+
+  it('pressing Escape on the title input cancels editing', async () => {
+    const user = userEvent.setup()
+    const props = setup({ listTitle: 'Original title' })
+    await user.click(screen.getByRole('button', { name: /Original title/i }))
+    const input = screen.getByRole('textbox', { name: 'List title' })
+    await user.clear(input)
+    await user.type(input, 'Discard me{Escape}')
+    expect(props.onListTitleChange).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /Original title/i })).toBeInTheDocument()
   })
 
   it('shows the packed item count', () => {
@@ -82,5 +118,31 @@ describe('AppHeader', () => {
     setup({ checkedItems: 0, totalItems: 0 })
     const fill = document.querySelector('.progress__fill') as HTMLElement
     expect(fill.style.width).toBe('0%')
+  })
+
+  it('Clear all button shows confirmation UI when clicked', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole('button', { name: /clear all/i }))
+    expect(screen.getByText('Clear all gear?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
+  it('confirming Clear all calls onClearAll', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    await user.click(screen.getByRole('button', { name: /clear all/i }))
+    await user.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(props.onClearAll).toHaveBeenCalled()
+  })
+
+  it('cancelling Clear all does not call onClearAll', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    await user.click(screen.getByRole('button', { name: /clear all/i }))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(props.onClearAll).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /clear all/i })).toBeInTheDocument()
   })
 })

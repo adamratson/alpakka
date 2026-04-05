@@ -44,6 +44,45 @@
   color: var(--text);
 }
 
+.app-header__title-btn {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: 0 -4px;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.4;
+  transition: color 0.15s, background 0.15s;
+
+  &:hover {
+    color: var(--accent);
+    background: var(--accent-bg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.app-header__title-input {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 4px;
+  padding: 1px 4px;
+  outline: none;
+  width: 220px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .app-header__actions {
   display: flex;
   gap: 8px;
@@ -494,6 +533,18 @@
 }
 
 .section-delete-confirm__label {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.clear-all-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clear-all-confirm__label {
   font-size: 13px;
   color: var(--text);
   white-space: nowrap;

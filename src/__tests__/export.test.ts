@@ -5,6 +5,7 @@ describe('importFromJson', () => {
   it('parses a valid export file', async () => {
     const data = {
       tripDays: 5,
+      listTitle: 'My custom list',
       sections: [{
         id: 'sec-1',
         title: 'Repair Kit',
@@ -22,6 +23,7 @@ describe('importFromJson', () => {
     const result = await importFromJson(file)
 
     expect(result.days).toBe(5)
+    expect(result.listTitle).toBe('My custom list')
     expect(result.sections).toHaveLength(1)
     expect(result.sections[0].title).toBe('Repair Kit')
     expect(result.sections[0].items[0].title).toBe('Tape')
@@ -45,6 +47,13 @@ describe('importFromJson', () => {
     expect(item.perDay).toBe(false)
     expect(item.checked).toBe(false)
     expect(item.description).toBe('')
+  })
+
+  it('defaults listTitle to "Bikepacking kit list" when missing', async () => {
+    const data = { sections: [] }
+    const file = new File([JSON.stringify(data)], 'kit.json')
+    const result = await importFromJson(file)
+    expect(result.listTitle).toBe('Bikepacking kit list')
   })
 
   it('defaults tripDays to 7 when missing', async () => {
@@ -84,13 +93,13 @@ describe('exportToJson', () => {
       return el
     })
 
-    exportToJson([], 7)
+    exportToJson([], 7, 'Test list')
 
     expect(URL.createObjectURL).toHaveBeenCalled()
     expect(mockClick).toHaveBeenCalled()
   })
 
-  it('includes tripDays and section data in the export', async () => {
+  it('includes tripDays, listTitle and section data in the export', async () => {
     let capturedBlob: Blob | undefined
     vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => {
       capturedBlob = b as Blob
@@ -103,7 +112,7 @@ describe('exportToJson', () => {
       return el
     })
 
-    exportToJson([{ id: 's1', title: 'Repair', items: [] }], 4)
+    exportToJson([{ id: 's1', title: 'Repair', items: [] }], 4, 'My trip')
 
     const text = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
@@ -113,6 +122,7 @@ describe('exportToJson', () => {
     })
     const parsed = JSON.parse(text)
     expect(parsed.tripDays).toBe(4)
+    expect(parsed.listTitle).toBe('My trip')
     expect(parsed.sections[0].title).toBe('Repair')
   })
 })
