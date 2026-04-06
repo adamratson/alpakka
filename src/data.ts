@@ -13,6 +13,13 @@ export interface KitSection {
   items: KitItem[];
 }
 
+export interface PackingList {
+  id: string;
+  title: string;
+  sections: KitSection[];
+  days: number;
+}
+
 function item(
   id: string,
   title: string,

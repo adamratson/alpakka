@@ -8,9 +8,6 @@ interface AppHeaderProps {
   onReset: () => void;
   onExport: () => void;
   onImport: (file: File) => void;
-  listTitle: string;
-  onListTitleChange: (title: string) => void;
-  onClearAll: () => void;
 }
 
 export default function AppHeader({
@@ -21,41 +18,13 @@ export default function AppHeader({
   onReset,
   onExport,
   onImport,
-  listTitle,
-  onListTitleChange,
-  onClearAll,
 }: AppHeaderProps) {
   const [displayDays, setDisplayDays] = useState(String(days));
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleInput, setTitleInput] = useState(listTitle);
-  const [confirmingClear, setConfirmingClear] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDisplayDays(String(days));
   }, [days]);
-
-  useEffect(() => {
-    setTitleInput(listTitle);
-  }, [listTitle]);
-
-  useEffect(() => {
-    if (editingTitle) {
-      titleInputRef.current?.focus();
-      titleInputRef.current?.select();
-    }
-  }, [editingTitle]);
-
-  function commitTitle() {
-    const trimmed = titleInput.trim();
-    if (trimmed) {
-      onListTitleChange(trimmed);
-    } else {
-      setTitleInput(listTitle);
-    }
-    setEditingTitle(false);
-  }
 
   const progress =
     totalItems === 0 ? 0 : Math.round((checkedItems / totalItems) * 100);
@@ -63,36 +32,7 @@ export default function AppHeader({
   return (
     <header className="app-header">
       <div className="app-header__top">
-        <div className="app-header__title">
-          <h1>Pakka</h1>
-          {editingTitle ? (
-            <input
-              ref={titleInputRef}
-              className="app-header__title-input"
-              type="text"
-              value={titleInput}
-              onChange={(e) => setTitleInput(e.target.value)}
-              onBlur={commitTitle}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitTitle();
-                if (e.key === "Escape") {
-                  setTitleInput(listTitle);
-                  setEditingTitle(false);
-                }
-              }}
-              aria-label="List title"
-            />
-          ) : (
-            <button
-              className="app-header__title-btn"
-              onClick={() => setEditingTitle(true)}
-              title="Click to edit list title"
-              aria-label={`List title: ${listTitle}. Click to edit.`}
-            >
-              {listTitle}
-            </button>
-          )}
-        </div>
+        <h1>Pakka</h1>
         <label className="trip-days">
           <span className="trip-days__label">Trip length</span>
           <span className="trip-days__input-wrap">
@@ -119,33 +59,6 @@ export default function AppHeader({
           <button className="btn btn--ghost" onClick={onReset}>
             Reset
           </button>
-          {confirmingClear ? (
-            <span className="clear-all-confirm">
-              <span className="clear-all-confirm__label">Clear all gear?</span>
-              <button
-                className="btn btn--danger btn--sm"
-                onClick={() => {
-                  onClearAll();
-                  setConfirmingClear(false);
-                }}
-              >
-                Clear
-              </button>
-              <button
-                className="btn btn--ghost btn--sm"
-                onClick={() => setConfirmingClear(false)}
-              >
-                Cancel
-              </button>
-            </span>
-          ) : (
-            <button
-              className="btn btn--ghost"
-              onClick={() => setConfirmingClear(true)}
-            >
-              Clear all
-            </button>
-          )}
           <button
             className="btn btn--ghost"
             onClick={() => fileInputRef.current?.click()}

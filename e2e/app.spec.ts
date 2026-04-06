@@ -6,6 +6,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto(APP_URL)
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForTimeout(500)
 })
 
 test('shows the app title and initial sections', async ({ page }) => {
@@ -13,6 +15,8 @@ test('shows the app title and initial sections', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Bike Repair Kit' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Food & Drink' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Toiletries' })).toBeVisible()
+  // Sidebar should be visible with the default list
+  await expect(page.getByRole('button', { name: 'Bikepacking kit list' })).toBeVisible()
 })
 
 test('can check and uncheck an item', async ({ page }) => {
@@ -124,4 +128,65 @@ test('state persists across a page reload', async ({ page }) => {
   await page.reload()
   await expect(page.locator('.progress__label')).toContainText('1 /')
   await expect(page.locator('.item--checked')).toHaveCount(1)
+})
+
+test('can create a new list from the sidebar', async ({ page }) => {
+  await page.getByRole('button', { name: '+ New list' }).click()
+  // The new list should be created and become active
+  await expect(page.locator('.sidebar__item--active')).toContainText('New kit list')
+  // The new empty list should have no sections
+  await expect(page.locator('.kit-section')).toHaveCount(0)
+})
+
+test('can switch between lists in the sidebar', async ({ page }) => {
+  // Check an item in the default list
+  await page.getByText('Tape').first().click()
+  await expect(page.locator('.progress__label')).toContainText('1 /')
+
+  // Create a second list (empty)
+  await page.getByRole('button', { name: '+ New list' }).click()
+  // This new list should have 0 items checked
+  await expect(page.locator('.progress__label')).toContainText('0 /')
+  // Sidebar should show the new list as active
+  await expect(page.locator('.sidebar__item--active')).toContainText('New kit list')
+
+  // Switch back to the first list
+  const lists = page.locator('.sidebar__item')
+  const firstList = lists.nth(0)
+  await firstList.click()
+  // Should show the previously checked item
+  await expect(page.locator('.progress__label')).toContainText('1 /')
+})
+
+test('can delete a list from the sidebar', async ({ page }) => {
+  // Create a second list
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await expect(page.locator('.sidebar__item')).toHaveCount(2)
+
+  // Hover to show delete button and click it
+  const sidebarItem = page.locator('.sidebar__item-wrapper').nth(1)
+  await sidebarItem.hover()
+  await sidebarItem.getByRole('button', { name: 'Delete list' }).click()
+  // Confirm deletion
+  await page.getByRole('button', { name: 'Delete' }).click()
+  // Should be back to one list
+  await expect(page.locator('.sidebar__item')).toHaveCount(1)
+})
+
+test('cannot delete the last list', async ({ page }) => {
+  // Should only have one list initially
+  const deleteButtons = page.locator('[title="Delete list"]')
+  await expect(deleteButtons).toHaveCount(0)
+})
+
+test('can rename a list by double-clicking', async ({ page }) => {
+  const listButton = page.getByRole('button', { name: 'Bikepacking kit list' })
+  await listButton.dblclick()
+  // Should show an input
+  const input = page.locator('.sidebar__edit-input')
+  await expect(input).toBeVisible()
+  await input.fill('My Renamed List')
+  await input.blur()
+  // Should show the new name
+  await expect(page.getByRole('button', { name: 'My Renamed List' })).toBeVisible()
 })
