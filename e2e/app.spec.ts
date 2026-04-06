@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const APP_URL = '/pakka/'
+const APP_URL = '/alpakka/'
 
 test.beforeEach(async ({ page }) => {
   await page.goto(APP_URL)
@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('shows the app title and initial sections', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: 'Pakka' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Alpakka' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Bike Repair Kit' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Food & Drink' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Toiletries' })).toBeVisible()

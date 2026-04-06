@@ -13,7 +13,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5173/pakka/',
+    url: 'http://localhost:5173/alpakka/',
     reuseExistingServer: !process.env.CI,
   },
 })

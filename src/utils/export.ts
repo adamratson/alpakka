@@ -151,7 +151,7 @@ export function exportToJson(lists: PackingList[], activeListId: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "pakka-lists.json";
+  a.download = "alpakka-lists.json";
   a.click();
   URL.revokeObjectURL(url);
 }

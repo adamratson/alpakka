@@ -32,7 +32,7 @@ export default function AppHeader({
   return (
     <header className="app-header">
       <div className="app-header__top">
-        <h1>Pakka</h1>
+        <h1>Alpakka</h1>
         <label className="trip-days">
           <span className="trip-days__label">Trip length</span>
           <span className="trip-days__input-wrap">

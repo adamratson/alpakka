@@ -12,15 +12,15 @@ export default function App() {
   const [lists, setLists] = useState<PackingList[]>(() => {
     try {
       // Check for new format first
-      const saved = localStorage.getItem("pakka-lists");
+      const saved = localStorage.getItem("alpakka-lists");
       if (saved) {
         return JSON.parse(saved) as PackingList[];
       }
 
       // Migrate from old format if available
-      const oldSections = localStorage.getItem("pakka-sections");
-      const oldDays = localStorage.getItem("pakka-days");
-      const oldTitle = localStorage.getItem("pakka-title");
+      const oldSections = localStorage.getItem("alpakka-sections");
+      const oldDays = localStorage.getItem("alpakka-days");
+      const oldTitle = localStorage.getItem("alpakka-title");
 
       if (oldSections) {
         // Old format exists, migrate it
@@ -31,9 +31,9 @@ export default function App() {
           days: oldDays ? parseInt(oldDays, 10) : 7,
         };
         // Clear old keys after migration
-        localStorage.removeItem("pakka-sections");
-        localStorage.removeItem("pakka-days");
-        localStorage.removeItem("pakka-title");
+        localStorage.removeItem("alpakka-sections");
+        localStorage.removeItem("alpakka-days");
+        localStorage.removeItem("alpakka-title");
         return [migratedList];
       }
 
@@ -61,10 +61,10 @@ export default function App() {
   const [activeListId, setActiveListId] = useState<string>(() => {
     try {
       // Try to restore from localStorage
-      const saved = localStorage.getItem("pakka-active");
+      const saved = localStorage.getItem("alpakka-active");
       if (saved) return saved;
       // If no saved active ID, try to get it from the lists
-      const listsSaved = localStorage.getItem("pakka-lists");
+      const listsSaved = localStorage.getItem("alpakka-lists");
       if (listsSaved) {
         const parsed = JSON.parse(listsSaved) as PackingList[];
         if (parsed.length > 0) return parsed[0].id;
@@ -86,13 +86,13 @@ export default function App() {
   const [addingSection, setAddingSection] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem("pakka-lists", JSON.stringify(lists));
+    localStorage.setItem("alpakka-lists", JSON.stringify(lists));
   }, [lists]);
 
   useEffect(() => {
     // Don't save "__pending__" to localStorage
     if (activeListId !== "__pending__") {
-      localStorage.setItem("pakka-active", activeListId);
+      localStorage.setItem("alpakka-active", activeListId);
     }
   }, [activeListId]);
 

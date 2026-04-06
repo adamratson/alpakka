@@ -21,7 +21,7 @@ function setup(overrides = {}) {
 describe('AppHeader', () => {
   it('renders the app title', () => {
     setup()
-    expect(screen.getByRole('heading', { name: 'Pakka' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Alpakka' })).toBeInTheDocument()
   })
 
   it('shows the packed item count', () => {
