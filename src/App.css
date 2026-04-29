@@ -1125,6 +1125,19 @@
   color: #1a6e3b;
 }
 
+.session-pill--disconnected {
+  background: #fde3df;
+  color: #a8331f;
+}
+
+.sidebar__shared-dot {
+  display: inline-block;
+  font-size: 9px;
+  vertical-align: middle;
+  margin-right: 6px;
+  color: #1a6e3b;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

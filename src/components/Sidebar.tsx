@@ -3,6 +3,7 @@ import { useState } from "react";
 interface SidebarProps {
   lists: { id: string; title: string }[];
   activeListId: string;
+  sharedListId?: string;
   onSwitch: (id: string) => void;
   onCreate: () => void;
   onRename: (id: string, title: string) => void;
@@ -12,6 +13,7 @@ interface SidebarProps {
 export default function Sidebar({
   lists,
   activeListId,
+  sharedListId,
   onSwitch,
   onCreate,
   onRename,
@@ -64,6 +66,15 @@ export default function Sidebar({
                 onClick={() => onSwitch(list.id)}
                 onDoubleClick={() => startEdit(list.id, list.title)}
               >
+                {list.id === sharedListId && (
+                  <span
+                    className="sidebar__shared-dot"
+                    aria-label="Shared with another peer"
+                    title="Shared with another peer"
+                  >
+                    ●
+                  </span>
+                )}
                 {list.title}
               </button>
             )}

@@ -85,9 +85,12 @@ function loadInitial(): { lists: ListEntry[]; activeId: string } {
 
 interface ActiveSession {
   listId: string;
+  role: "host" | "joiner";
   pc: RTCPeerConnection;
   stopSync: () => void;
 }
+
+type SessionStatus = "connecting" | "connected" | "disconnected" | null;
 
 export default function App() {
   const [{ lists, activeId }, setState] = useState(loadInitial);
@@ -98,7 +101,7 @@ export default function App() {
     return m ? decodeURIComponent(m[1]) : null;
   });
   const [session, setSession] = useState<ActiveSession | null>(null);
-  const [sessionStatus, setSessionStatus] = useState<"connecting" | "connected" | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>(null);
 
   // Strip the join fragment from the URL once we've captured it, so a reload
   // doesn't re-prompt and so the URL bar isn't cluttered.
@@ -261,11 +264,18 @@ export default function App() {
   }
 
   function watchDisconnect(pc: RTCPeerConnection, next: ActiveSession) {
+    let stopped = false;
     const onChange = () => {
       const s = pc.connectionState;
       if (s === "disconnected" || s === "failed" || s === "closed") {
-        setSession((cur) => (cur === next ? null : cur));
-        setSessionStatus((cur) => (cur === "connected" ? null : cur));
+        if (!stopped) {
+          // Tear down sync on the dead pc so update events stop trying to send.
+          stopped = true;
+          next.stopSync();
+        }
+        // Keep the session in state so the user still sees which list was
+        // shared and can choose to reshare or leave; only transition status.
+        setSessionStatus((cur) => (cur === "connected" ? "disconnected" : cur));
       }
     };
     pc.addEventListener("connectionstatechange", onChange);
@@ -277,7 +287,7 @@ export default function App() {
     const { id, doc } = sharingFor;
     const transport = await host.ready;
     const stopSync = startSync(doc, transport);
-    const next: ActiveSession = { listId: id, pc: host.pc, stopSync };
+    const next: ActiveSession = { listId: id, role: "host", pc: host.pc, stopSync };
     setSession(next);
     setSessionStatus("connected");
     watchDisconnect(host.pc, next);
@@ -293,10 +303,22 @@ export default function App() {
     }));
     const transport = await joiner.ready;
     const stopSync = startSync(newDoc, transport);
-    const next: ActiveSession = { listId: newId, pc: joiner.pc, stopSync };
+    const next: ActiveSession = { listId: newId, role: "joiner", pc: joiner.pc, stopSync };
     setSession(next);
     setSessionStatus("connected");
     watchDisconnect(joiner.pc, next);
+  }
+
+  function handleLeaveSession() {
+    endSession();
+  }
+
+  function handleReshare() {
+    if (!session || session.role !== "host") return;
+    const entry = lists.find((l) => l.id === session.listId);
+    if (!entry) return;
+    endSession();
+    setSharingFor({ id: entry.id, doc: entry.doc, title: getListTitle(entry.doc) });
   }
 
   const sidebarLists = lists.map(({ id, doc }) => ({ id, title: getListTitle(doc) }));
@@ -320,12 +342,15 @@ export default function App() {
           })
         }
         sessionStatus={sessionStatus}
+        onLeaveSession={session ? handleLeaveSession : undefined}
+        onReshare={session?.role === "host" ? handleReshare : undefined}
       />
 
       <div className="app-body">
         <Sidebar
           lists={sidebarLists}
           activeListId={activeId}
+          sharedListId={session?.listId}
           onSwitch={switchList}
           onCreate={createList}
           onRename={renameList}
