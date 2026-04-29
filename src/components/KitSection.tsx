@@ -42,9 +42,35 @@ const ChevronIcon = ({ collapsed }: { collapsed: boolean }) => (
   </svg>
 );
 
+const UpIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none">
+    <path
+      d="M4 10l4-4 4 4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const DownIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none">
+    <path
+      d="M4 6l4 4 4-4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 interface KitSectionProps {
   section: KitSectionType;
   days: number;
+  index: number;
+  total: number;
   onToggleItem: (itemId: string) => void;
   onToggleAll: (checked: boolean) => void;
   onUpdateQuantity: (itemId: string, quantity: number) => void;
@@ -54,11 +80,14 @@ interface KitSectionProps {
   onRemoveSection: () => void;
   onAddItem: (title: string, description: string) => void;
   onRenameSection: (title: string) => void;
+  onMoveTo: (toIndex: number) => void;
 }
 
 export default function KitSection({
   section,
   days,
+  index,
+  total,
   onToggleItem,
   onToggleAll,
   onUpdateQuantity,
@@ -68,6 +97,7 @@ export default function KitSection({
   onRemoveSection,
   onAddItem,
   onRenameSection,
+  onMoveTo,
 }: KitSectionProps) {
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -139,6 +169,26 @@ export default function KitSection({
               {allChecked ? "Unpack all" : someChecked ? "Pack rest" : "Pack all"}
             </button>
           )}
+          <div className="kit-section__move">
+            <button
+              className="icon-btn icon-btn--move"
+              onClick={() => onMoveTo(index - 1)}
+              disabled={index === 0}
+              title="Move section up"
+              aria-label={`Move section ${section.title} up`}
+            >
+              <UpIcon />
+            </button>
+            <button
+              className="icon-btn icon-btn--move"
+              onClick={() => onMoveTo(index + 1)}
+              disabled={index >= total - 1}
+              title="Move section down"
+              aria-label={`Move section ${section.title} down`}
+            >
+              <DownIcon />
+            </button>
+          </div>
           {confirmingDelete ? (
             <span className="section-delete-confirm">
               <span className="section-delete-confirm__label">Remove section?</span>

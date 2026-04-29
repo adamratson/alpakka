@@ -22,6 +22,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     expect(screen.getByRole('heading', { name: 'Repair Kit' })).toBeInTheDocument()
@@ -36,6 +37,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     expect(screen.getByText('No items yet')).toBeInTheDocument()
@@ -48,6 +50,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     expect(screen.getByRole('button', { name: 'Pack all' })).toBeInTheDocument()
@@ -65,6 +68,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     expect(screen.getByRole('button', { name: 'Unpack all' })).toBeInTheDocument()
@@ -82,6 +86,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     expect(screen.getByRole('button', { name: 'Pack rest' })).toBeInTheDocument()
@@ -95,6 +100,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     await user.click(screen.getByRole('button', { name: 'Pack all' }))
@@ -113,6 +119,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     await user.click(screen.getByRole('button', { name: 'Unpack all' }))
@@ -127,6 +134,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     await user.click(screen.getByTitle('Remove section'))
@@ -142,6 +150,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     await user.click(screen.getByTitle('Remove section'))
@@ -157,6 +166,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     await user.click(screen.getByRole('button', { name: /add item/i }))
@@ -171,6 +181,7 @@ describe('KitSection', () => {
       onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
       onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
       onAddItem: vi.fn(), onRenameSection: vi.fn(),
+      index: 0, total: 1, onMoveTo: vi.fn(),
     }
     render(<KitSection {...props} />)
     await user.click(screen.getByRole('button', { name: /add item/i }))

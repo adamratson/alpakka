@@ -300,6 +300,10 @@ export default function App() {
     ops.removeSection(activeDoc, sectionId);
   }
 
+  function moveSection(sectionId: string, toIndex: number) {
+    ops.moveSection(activeDoc, sectionId, toIndex);
+  }
+
   function handleImport(file: File) {
     importFromJson(file)
       .then(({ lists: importedLists, activeListId }) => {
@@ -423,11 +427,13 @@ export default function App() {
         />
 
         <main className="app-main">
-          {sections.map((section) => (
+          {sections.map((section, idx) => (
             <KitSectionComponent
               key={section.id}
               section={section}
               days={days}
+              index={idx}
+              total={sections.length}
               onToggleItem={(itemId) => toggleItem(section.id, itemId)}
               onToggleAll={(checked) => toggleAll(section.id, checked)}
               onUpdateQuantity={(itemId, qty) => updateQuantity(section.id, itemId, qty)}
@@ -439,6 +445,7 @@ export default function App() {
               onRemoveItem={(itemId) => removeItem(section.id, itemId)}
               onRemoveSection={() => removeSection(section.id)}
               onRenameSection={(title) => renameSection(section.id, title)}
+              onMoveTo={(toIndex) => moveSection(section.id, toIndex)}
             />
           ))}
 

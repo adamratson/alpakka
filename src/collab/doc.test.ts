@@ -139,7 +139,40 @@ describe("ops mutations", () => {
     ops.toggleItem(doc, "s1", "missing-item");
     ops.removeItem(doc, "s1", "missing-item");
     ops.removeSection(doc, "missing-section");
+    ops.moveSection(doc, "missing-section", 0);
     expect(listFromDoc("L1", doc)).toEqual(listFromDoc("L1", makeDoc()));
+  });
+
+  it("moveSection reorders sections, preserving items", () => {
+    const doc = makeDoc();
+    ops.addSection(doc, "Tools");
+    expect(listFromDoc("L1", doc).sections.map((s) => s.title)).toEqual([
+      "Bike",
+      "Food",
+      "Tools",
+    ]);
+
+    ops.moveSection(doc, "s1", 2);
+    const after = listFromDoc("L1", doc);
+    expect(after.sections.map((s) => s.title)).toEqual(["Food", "Tools", "Bike"]);
+    // items survive the move
+    expect(after.sections[2].items.map((i) => i.id)).toEqual(["i1", "i2"]);
+    expect(after.sections[2].items[1].description).toBe("spare");
+
+    ops.moveSection(doc, "s1", 0);
+    expect(listFromDoc("L1", doc).sections.map((s) => s.title)).toEqual([
+      "Bike",
+      "Food",
+      "Tools",
+    ]);
+
+    // out-of-range index gets clamped
+    ops.moveSection(doc, "s1", 99);
+    expect(listFromDoc("L1", doc).sections.map((s) => s.title)).toEqual([
+      "Food",
+      "Tools",
+      "Bike",
+    ]);
   });
 });
 

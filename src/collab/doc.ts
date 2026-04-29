@@ -191,6 +191,32 @@ export const ops = {
     const sections = doc.getArray<YSection>("sections");
     sections.delete(sec.index, 1);
   },
+  moveSection(doc: Y.Doc, sectionId: string, toIndex: number) {
+    const sections = doc.getArray<YSection>("sections");
+    const sec = findSection(doc, sectionId);
+    if (!sec) return;
+    const clamped = Math.max(0, Math.min(sections.length - 1, toIndex));
+    if (clamped === sec.index) return;
+
+    const itemsArr = sec.section.get("items") as Y.Array<YItem>;
+    const data: KitSection = {
+      id: sec.section.get("id") as string,
+      title: sec.section.get("title") as string,
+      items: itemsArr.toArray().map((im) => ({
+        id: im.get("id") as string,
+        title: im.get("title") as string,
+        quantity: im.get("quantity") as number,
+        perDay: im.get("perDay") as boolean,
+        description: im.get("description") as string,
+        checked: im.get("checked") as boolean,
+      })),
+    };
+
+    doc.transact(() => {
+      sections.delete(sec.index, 1);
+      sections.insert(clamped, [sectionToY(data)]);
+    });
+  },
 };
 
 export function encodeDoc(doc: Y.Doc): string {
