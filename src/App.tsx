@@ -263,19 +263,50 @@ export default function App() {
     setSessionStatus(null);
   }
 
+  function handleStale() {
+    // Same end state as the pc.connectionstatechange path, just driven by
+    // application-level liveness instead of waiting on ICE consent.
+    setSessionStatus((cur) => (cur === "connected" ? "disconnected" : cur));
+  }
+
   function watchDisconnect(pc: RTCPeerConnection, next: ActiveSession) {
+    // ICE flickers briefly all the time (Wi-Fi roaming, momentary packet loss).
+    // Surfacing "disconnected" instantly produces a flashy UI for blips that
+    // recover on their own. Wait a beat before showing it; recovery cancels.
+    // "failed"/"closed" are terminal — those fire immediately.
+    const GRACE_MS = 5000;
     let stopped = false;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const fire = () => {
+      if (stopped) return;
+      stopped = true;
+      next.stopSync();
+      setSessionStatus((cur) => (cur === "connected" ? "disconnected" : cur));
+    };
+
+    const cancelGrace = () => {
+      if (graceTimer) {
+        clearTimeout(graceTimer);
+        graceTimer = null;
+      }
+    };
+
     const onChange = () => {
       const s = pc.connectionState;
-      if (s === "disconnected" || s === "failed" || s === "closed") {
-        if (!stopped) {
-          // Tear down sync on the dead pc so update events stop trying to send.
-          stopped = true;
-          next.stopSync();
+      if (s === "connected") {
+        // Recovered from a transient flicker before the grace period expired.
+        cancelGrace();
+      } else if (s === "disconnected") {
+        if (!stopped && !graceTimer) {
+          graceTimer = setTimeout(() => {
+            graceTimer = null;
+            fire();
+          }, GRACE_MS);
         }
-        // Keep the session in state so the user still sees which list was
-        // shared and can choose to reshare or leave; only transition status.
-        setSessionStatus((cur) => (cur === "connected" ? "disconnected" : cur));
+      } else if (s === "failed" || s === "closed") {
+        cancelGrace();
+        fire();
       }
     };
     pc.addEventListener("connectionstatechange", onChange);
@@ -286,7 +317,7 @@ export default function App() {
     endSession();
     const { id, doc } = sharingFor;
     const transport = await host.ready;
-    const stopSync = startSync(doc, transport);
+    const stopSync = startSync(doc, transport, { onStale: handleStale });
     const next: ActiveSession = { listId: id, role: "host", pc: host.pc, stopSync };
     setSession(next);
     setSessionStatus("connected");
@@ -302,7 +333,7 @@ export default function App() {
       activeId: newId,
     }));
     const transport = await joiner.ready;
-    const stopSync = startSync(newDoc, transport);
+    const stopSync = startSync(newDoc, transport, { onStale: handleStale });
     const next: ActiveSession = { listId: newId, role: "joiner", pc: joiner.pc, stopSync };
     setSession(next);
     setSessionStatus("connected");

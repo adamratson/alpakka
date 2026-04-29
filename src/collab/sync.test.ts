@@ -114,3 +114,125 @@ describe("startSync", () => {
     expect(listFromDoc("L", joiner).sections[0].items[0].checked).toBe(false);
   });
 });
+
+describe("heartbeat liveness", () => {
+  // Drive a fake clock and timer so we can fast-forward without real waits.
+  function fakeTimers() {
+    let nowMs = 0;
+    const intervals: { ms: number; fn: () => void; lastFire: number }[] = [];
+    return {
+      now: () => nowMs,
+      advance: (ms: number) => {
+        const target = nowMs + ms;
+        // Walk the clock forward, firing any due intervals along the way.
+        while (true) {
+          let nextFireAt = Infinity;
+          let nextEntry: typeof intervals[number] | null = null;
+          for (const e of intervals) {
+            const due = e.lastFire + e.ms;
+            if (due < nextFireAt) {
+              nextFireAt = due;
+              nextEntry = e;
+            }
+          }
+          if (nextEntry === null || nextFireAt > target) break;
+          nowMs = nextFireAt;
+          nextEntry.lastFire = nextFireAt;
+          nextEntry.fn();
+        }
+        nowMs = target;
+      },
+      setInterval: (fn: () => void, ms: number) => {
+        const entry = { ms, fn, lastFire: nowMs };
+        intervals.push(entry);
+        return entry;
+      },
+      clearInterval: (h: unknown) => {
+        const i = intervals.indexOf(h as typeof intervals[number]);
+        if (i >= 0) intervals.splice(i, 1);
+      },
+    };
+  }
+
+  it("calls onStale when no inbound traffic for staleMs", () => {
+    const doc = seedDoc();
+    const transport: SyncTransport = {
+      send: () => {}, // sends go nowhere — peer is silent
+      onMessage: () => () => {},
+    };
+    const t = fakeTimers();
+    let stale = false;
+
+    startSync(doc, transport, {
+      onStale: () => {
+        stale = true;
+      },
+      heartbeatMs: 1000,
+      staleMs: 5000,
+      now: t.now,
+      setInterval: t.setInterval,
+      clearInterval: t.clearInterval,
+    });
+
+    t.advance(4000);
+    expect(stale).toBe(false);
+    t.advance(2000); // total 6000ms — past stale threshold
+    expect(stale).toBe(true);
+  });
+
+  it("does not fire onStale while heartbeats keep arriving", () => {
+    const doc = seedDoc();
+    let receive: ((d: Uint8Array) => void) = () => {};
+    const transport: SyncTransport = {
+      send: () => {},
+      onMessage: (h) => {
+        receive = h;
+        return () => {};
+      },
+    };
+    const t = fakeTimers();
+    let stale = false;
+
+    startSync(doc, transport, {
+      onStale: () => {
+        stale = true;
+      },
+      heartbeatMs: 1000,
+      staleMs: 5000,
+      now: t.now,
+      setInterval: t.setInterval,
+      clearInterval: t.clearInterval,
+    });
+
+    // Simulate the peer's heartbeat every 1s for 20s.
+    for (let i = 0; i < 20; i++) {
+      t.advance(1000);
+      receive(new Uint8Array([2])); // MSG_HEARTBEAT
+    }
+    expect(stale).toBe(false);
+  });
+
+  it("fires onStale at most once even after long idle", () => {
+    const doc = seedDoc();
+    const transport: SyncTransport = {
+      send: () => {},
+      onMessage: () => () => {},
+    };
+    const t = fakeTimers();
+    let count = 0;
+
+    startSync(doc, transport, {
+      onStale: () => {
+        count++;
+      },
+      heartbeatMs: 1000,
+      staleMs: 5000,
+      now: t.now,
+      setInterval: t.setInterval,
+      clearInterval: t.clearInterval,
+    });
+
+    t.advance(60000);
+    expect(count).toBe(1);
+  });
+});
