@@ -7,6 +7,8 @@ interface AppHeaderProps {
   totalItems: number;
   onExport: () => void;
   onImport: (file: File) => void;
+  onShare: () => void;
+  sessionStatus?: "connecting" | "connected" | null;
 }
 
 export default function AppHeader({
@@ -16,6 +18,8 @@ export default function AppHeader({
   totalItems,
   onExport,
   onImport,
+  onShare,
+  sessionStatus,
 }: AppHeaderProps) {
   const [displayDays, setDisplayDays] = useState(String(days));
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,6 +58,17 @@ export default function AppHeader({
           </span>
         </label>
         <div className="app-header__actions">
+          {sessionStatus && (
+            <span
+              className={`session-pill session-pill--${sessionStatus}`}
+              aria-live="polite"
+            >
+              {sessionStatus === "connected" ? "● Connected" : "● Connecting…"}
+            </span>
+          )}
+          <button className="btn btn--ghost" onClick={onShare}>
+            Share
+          </button>
           <button
             className="btn btn--ghost"
             onClick={() => fileInputRef.current?.click()}

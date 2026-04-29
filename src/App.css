@@ -1105,3 +1105,105 @@
   border-color: var(--accent-border);
   color: var(--accent);
 }
+
+.session-pill {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.session-pill--connecting {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.session-pill--connected {
+  background: #d8efdc;
+  color: #1a6e3b;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  max-width: 520px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  font-family: var(--sans);
+}
+
+.modal__title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.modal__body {
+  font-size: 14px;
+  margin: 8px 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.modal__body--error {
+  color: #b3261e;
+}
+
+.modal__body--hint {
+  color: var(--text-muted, #666);
+  font-size: 13px;
+}
+
+.modal__field {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  margin: 8px 0 12px;
+}
+
+.modal__input {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.modal__textarea {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}

@@ -1,267 +1,307 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as Y from "yjs";
 import { initialSections } from "./data";
-import type { PackingList, KitSection } from "./data";
+import type { KitSection, PackingList } from "./data";
 import AppHeader from "./components/AppHeader";
 import Sidebar from "./components/Sidebar";
 import KitSectionComponent from "./components/KitSection";
 import { AddSectionForm, AddSectionButton } from "./components/AddSectionForm";
+import ShareModal from "./components/ShareModal";
+import JoinModal from "./components/JoinModal";
 import { exportToJson, importFromJson } from "./utils/export";
+import {
+  createListDoc,
+  decodeIntoDoc,
+  encodeDoc,
+  getListTitle,
+  listFromDoc,
+  ops,
+} from "./collab/doc";
+import { useYDocs } from "./collab/useYDocs";
+import { startSync } from "./collab/sync";
+import type { HostSession, JoinerSession } from "./collab/peer";
 import "./App.css";
 
+const STORAGE_INDEX = "alpakka-list-index";
+const STORAGE_LIST_PREFIX = "alpakka-list:";
+
+interface ListEntry {
+  id: string;
+  doc: Y.Doc;
+}
+
+function loadInitial(): { lists: ListEntry[]; activeId: string } {
+  try {
+    const indexRaw = localStorage.getItem(STORAGE_INDEX);
+    if (indexRaw) {
+      const index = JSON.parse(indexRaw) as { ids: string[]; activeId: string };
+      const lists: ListEntry[] = [];
+      for (const id of index.ids) {
+        const encoded = localStorage.getItem(STORAGE_LIST_PREFIX + id);
+        if (!encoded) continue;
+        const doc = new Y.Doc();
+        decodeIntoDoc(doc, encoded);
+        lists.push({ id, doc });
+      }
+      if (lists.length > 0) {
+        const activeId = lists.find((l) => l.id === index.activeId)?.id ?? lists[0].id;
+        return { lists, activeId };
+      }
+    }
+
+    const v1 = localStorage.getItem("alpakka-lists");
+    if (v1) {
+      const parsed = JSON.parse(v1) as PackingList[];
+      const lists = parsed.map((l) => ({
+        id: l.id,
+        doc: createListDoc({ title: l.title, days: l.days, sections: l.sections }),
+      }));
+      const activeId = localStorage.getItem("alpakka-active") ?? lists[0]?.id ?? "";
+      localStorage.removeItem("alpakka-lists");
+      localStorage.removeItem("alpakka-active");
+      return { lists, activeId };
+    }
+
+    const v0Sections = localStorage.getItem("alpakka-sections");
+    if (v0Sections) {
+      const sections = JSON.parse(v0Sections) as KitSection[];
+      const days = parseInt(localStorage.getItem("alpakka-days") ?? "7", 10);
+      const title = localStorage.getItem("alpakka-title") ?? "Kit list";
+      const id = `list-${Date.now()}`;
+      const doc = createListDoc({ title, sections, days });
+      localStorage.removeItem("alpakka-sections");
+      localStorage.removeItem("alpakka-days");
+      localStorage.removeItem("alpakka-title");
+      return { lists: [{ id, doc }], activeId: id };
+    }
+  } catch {
+    // fall through to seed
+  }
+
+  const id = `list-${Date.now()}`;
+  const doc = createListDoc({ title: "Kit list", sections: initialSections, days: 7 });
+  return { lists: [{ id, doc }], activeId: id };
+}
+
+interface ActiveSession {
+  listId: string;
+  pc: RTCPeerConnection;
+  stopSync: () => void;
+}
+
 export default function App() {
-  const [lists, setLists] = useState<PackingList[]>(() => {
-    try {
-      // Check for new format first
-      const saved = localStorage.getItem("alpakka-lists");
-      if (saved) {
-        return JSON.parse(saved) as PackingList[];
-      }
-
-      // Migrate from old format if available
-      const oldSections = localStorage.getItem("alpakka-sections");
-      const oldDays = localStorage.getItem("alpakka-days");
-      const oldTitle = localStorage.getItem("alpakka-title");
-
-      if (oldSections) {
-        // Old format exists, migrate it
-        const migratedList: PackingList = {
-          id: `list-${Date.now()}`,
-          title: oldTitle || "Kit list",
-          sections: JSON.parse(oldSections),
-          days: oldDays ? parseInt(oldDays, 10) : 7,
-        };
-        // Clear old keys after migration
-        localStorage.removeItem("alpakka-sections");
-        localStorage.removeItem("alpakka-days");
-        localStorage.removeItem("alpakka-title");
-        return [migratedList];
-      }
-
-      // No saved data, use initial state
-      return [
-        {
-          id: `list-${Date.now()}`,
-          title: "Kit list",
-          sections: initialSections,
-          days: 7,
-        },
-      ];
-    } catch {
-      return [
-        {
-          id: `list-${Date.now()}`,
-          title: "Kit list",
-          sections: initialSections,
-          days: 7,
-        },
-      ];
-    }
-  });
-
-  const [activeListId, setActiveListId] = useState<string>(() => {
-    try {
-      // Try to restore from localStorage
-      const saved = localStorage.getItem("alpakka-active");
-      if (saved) return saved;
-      // If no saved active ID, try to get it from the lists
-      const listsSaved = localStorage.getItem("alpakka-lists");
-      if (listsSaved) {
-        const parsed = JSON.parse(listsSaved) as PackingList[];
-        if (parsed.length > 0) return parsed[0].id;
-      }
-    } catch {
-      // fall through
-    }
-    // Fallback: will be synced in useEffect
-    return "__pending__";
-  });
-
-  // Sync activeListId with lists if it becomes invalid
-  useEffect(() => {
-    if (activeListId === "__pending__" || (!lists.find(l => l.id === activeListId) && lists.length > 0)) {
-      setActiveListId(lists[0].id);
-    }
-  }, [lists, activeListId]);
-
+  const [{ lists, activeId }, setState] = useState(loadInitial);
   const [addingSection, setAddingSection] = useState(false);
+  const [sharingFor, setSharingFor] = useState<{ id: string; doc: Y.Doc; title: string } | null>(null);
+  const [joinOffer, setJoinOffer] = useState<string | null>(() => {
+    const m = window.location.hash.match(/^#join=(.+)$/);
+    return m ? decodeURIComponent(m[1]) : null;
+  });
+  const [session, setSession] = useState<ActiveSession | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<"connecting" | "connected" | null>(null);
 
+  // Strip the join fragment from the URL once we've captured it, so a reload
+  // doesn't re-prompt and so the URL bar isn't cluttered.
   useEffect(() => {
-    localStorage.setItem("alpakka-lists", JSON.stringify(lists));
+    if (joinOffer) {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, [joinOffer]);
+
+  // Detect #join=... that arrives via hash navigation in an already-open tab.
+  useEffect(() => {
+    const handler = () => {
+      const m = window.location.hash.match(/^#join=(.+)$/);
+      if (m) setJoinOffer(decodeURIComponent(m[1]));
+    };
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+
+  const docs = useMemo(() => lists.map((l) => l.doc), [lists]);
+  useYDocs(docs);
+
+  const persistedIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const handlers: { doc: Y.Doc; handler: () => void }[] = [];
+    for (const { id, doc } of lists) {
+      const handler = () => {
+        localStorage.setItem(STORAGE_LIST_PREFIX + id, encodeDoc(doc));
+      };
+      doc.on("update", handler);
+      handlers.push({ doc, handler });
+      if (!persistedIdsRef.current.has(id)) {
+        localStorage.setItem(STORAGE_LIST_PREFIX + id, encodeDoc(doc));
+        persistedIdsRef.current.add(id);
+      }
+    }
+    return () => handlers.forEach(({ doc, handler }) => doc.off("update", handler));
   }, [lists]);
 
   useEffect(() => {
-    // Don't save "__pending__" to localStorage
-    if (activeListId !== "__pending__") {
-      localStorage.setItem("alpakka-active", activeListId);
+    localStorage.setItem(
+      STORAGE_INDEX,
+      JSON.stringify({ ids: lists.map((l) => l.id), activeId })
+    );
+    const liveIds = new Set(lists.map((l) => l.id));
+    for (const id of persistedIdsRef.current) {
+      if (!liveIds.has(id)) {
+        localStorage.removeItem(STORAGE_LIST_PREFIX + id);
+        persistedIdsRef.current.delete(id);
+      }
     }
-  }, [activeListId]);
+  }, [lists, activeId]);
 
-  const activeList = lists.find((l) => l.id === activeListId);
-  // Don't render until we have a valid active list
-  if (!activeList || activeListId === "__pending__") return null;
+  const activeEntry = lists.find((l) => l.id === activeId) ?? lists[0];
+  if (!activeEntry) return null;
 
+  const activeDoc = activeEntry.doc;
+  const activeList = listFromDoc(activeEntry.id, activeDoc);
   const { sections, days } = activeList;
   const allItems = sections.flatMap((s) => s.items);
   const checkedCount = allItems.filter((i) => i.checked).length;
 
-  // Helper to update the active list
-  function updateActiveList(updater: (list: PackingList) => PackingList) {
-    setLists((prev) =>
-      prev.map((l) => (l.id === activeListId ? updater(l) : l))
-    );
-  }
-
-  // Helper to update a section in the active list
-  function updateSection(
-    sectionId: string,
-    updater: (s: KitSection) => KitSection
-  ) {
-    updateActiveList((list) => ({
-      ...list,
-      sections: list.sections.map((s) => (s.id === sectionId ? updater(s) : s)),
-    }));
+  function handleDaysChange(newDays: number) {
+    ops.setDays(activeDoc, newDays);
   }
 
   function toggleItem(sectionId: string, itemId: string) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      items: s.items.map((item) =>
-        item.id === itemId ? { ...item, checked: !item.checked } : item
-      ),
-    }));
+    ops.toggleItem(activeDoc, sectionId, itemId);
   }
 
   function toggleAll(sectionId: string, checked: boolean) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      items: s.items.map((item) => ({ ...item, checked })),
-    }));
+    ops.toggleAll(activeDoc, sectionId, checked);
   }
 
   function updateQuantity(sectionId: string, itemId: string, quantity: number) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      items: s.items.map((item) =>
-        item.id === itemId ? { ...item, quantity } : item
-      ),
-    }));
+    ops.updateQuantity(activeDoc, sectionId, itemId, quantity);
   }
 
   function updatePerDay(sectionId: string, itemId: string, perDay: boolean) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      items: s.items.map((item) =>
-        item.id === itemId ? { ...item, perDay } : item
-      ),
-    }));
+    ops.updatePerDay(activeDoc, sectionId, itemId, perDay);
   }
 
-  function updateItemDetails(sectionId: string, itemId: string, updates: { title?: string; description?: string }) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      items: s.items.map((item) =>
-        item.id === itemId ? { ...item, ...updates } : item
-      ),
-    }));
+  function updateItemDetails(
+    sectionId: string,
+    itemId: string,
+    updates: { title?: string; description?: string }
+  ) {
+    ops.updateItemDetails(activeDoc, sectionId, itemId, updates);
   }
 
   function renameSection(sectionId: string, title: string) {
-    updateActiveList((list) => ({
-      ...list,
-      sections: list.sections.map((s) =>
-        s.id === sectionId ? { ...s, title } : s
-      ),
-    }));
+    ops.renameSection(activeDoc, sectionId, title);
   }
 
   function addItem(sectionId: string, title: string, description: string) {
-    const id = `item-${Date.now()}`;
-    updateSection(sectionId, (s) => ({
-      ...s,
-      items: [
-        ...s.items,
-        { id, title, quantity: 1, perDay: false, description, checked: false },
-      ],
-    }));
+    ops.addItem(activeDoc, sectionId, title, description);
   }
 
   function removeItem(sectionId: string, itemId: string) {
-    updateSection(sectionId, (s) => ({
-      ...s,
-      items: s.items.filter((item) => item.id !== itemId),
-    }));
+    ops.removeItem(activeDoc, sectionId, itemId);
   }
 
   function addSection(title: string) {
-    const id = `section-${Date.now()}`;
-    updateActiveList((list) => ({
-      ...list,
-      sections: [...list.sections, { id, title, items: [] }],
-    }));
+    ops.addSection(activeDoc, title);
     setAddingSection(false);
   }
 
   function removeSection(sectionId: string) {
-    updateActiveList((list) => ({
-      ...list,
-      sections: list.sections.filter((s) => s.id !== sectionId),
-    }));
-  }
-
-  function handleDaysChange(newDays: number) {
-    updateActiveList((list) => ({
-      ...list,
-      days: newDays,
-    }));
+    ops.removeSection(activeDoc, sectionId);
   }
 
   function handleImport(file: File) {
     importFromJson(file)
-      .then(({ lists: importedLists, activeListId: importedActiveId }) => {
-        setLists(importedLists);
-        setActiveListId(importedActiveId);
+      .then(({ lists: importedLists, activeListId }) => {
+        const newEntries = importedLists.map((l) => ({
+          id: l.id,
+          doc: createListDoc({ title: l.title, days: l.days, sections: l.sections }),
+        }));
+        setState({
+          lists: newEntries,
+          activeId:
+            newEntries.find((e) => e.id === activeListId)?.id ?? newEntries[0]?.id ?? "",
+        });
       })
       .catch((err: Error) => alert(`Import failed: ${err.message}`));
   }
 
   function createList() {
     const id = `list-${Date.now()}`;
-    setLists((prev) => [
-      ...prev,
-      {
-        id,
-        title: "New kit list",
-        sections: [],
-        days: 7,
-      },
-    ]);
-    setActiveListId(id);
+    const doc = createListDoc({ title: "New kit list", sections: [], days: 7 });
+    setState((prev) => ({ lists: [...prev.lists, { id, doc }], activeId: id }));
   }
 
   function deleteList(id: string) {
-    setLists((prev) => {
-      const filtered = prev.filter((l) => l.id !== id);
-      if (filtered.length === 0) {
-        // Don't allow deleting the last list
-        return prev;
-      }
-      // If we're deleting the active list, switch to the first remaining
-      if (id === activeListId) {
-        setActiveListId(filtered[0].id);
-      }
-      return filtered;
+    setState((prev) => {
+      if (prev.lists.length <= 1) return prev;
+      const filtered = prev.lists.filter((l) => l.id !== id);
+      const nextActive = id === prev.activeId ? filtered[0].id : prev.activeId;
+      return { lists: filtered, activeId: nextActive };
     });
   }
 
   function renameList(id: string, title: string) {
-    setLists((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, title } : l))
-    );
+    const entry = lists.find((l) => l.id === id);
+    if (!entry) return;
+    ops.setTitle(entry.doc, title);
   }
 
   function switchList(id: string) {
-    setActiveListId(id);
+    setState((prev) => ({ ...prev, activeId: id }));
   }
+
+  function endSession() {
+    if (session) {
+      session.stopSync();
+      session.pc.close();
+    }
+    setSession(null);
+    setSessionStatus(null);
+  }
+
+  function watchDisconnect(pc: RTCPeerConnection, next: ActiveSession) {
+    const onChange = () => {
+      const s = pc.connectionState;
+      if (s === "disconnected" || s === "failed" || s === "closed") {
+        setSession((cur) => (cur === next ? null : cur));
+        setSessionStatus((cur) => (cur === "connected" ? null : cur));
+      }
+    };
+    pc.addEventListener("connectionstatechange", onChange);
+  }
+
+  async function handleHostConnected(host: HostSession) {
+    if (!sharingFor) return;
+    endSession();
+    const { id, doc } = sharingFor;
+    const transport = await host.ready;
+    const stopSync = startSync(doc, transport);
+    const next: ActiveSession = { listId: id, pc: host.pc, stopSync };
+    setSession(next);
+    setSessionStatus("connected");
+    watchDisconnect(host.pc, next);
+  }
+
+  async function handleJoinerConnected(joiner: JoinerSession) {
+    endSession();
+    const newId = `list-${Date.now()}`;
+    const newDoc = new Y.Doc();
+    setState((prev) => ({
+      lists: [...prev.lists, { id: newId, doc: newDoc }],
+      activeId: newId,
+    }));
+    const transport = await joiner.ready;
+    const stopSync = startSync(newDoc, transport);
+    const next: ActiveSession = { listId: newId, pc: joiner.pc, stopSync };
+    setSession(next);
+    setSessionStatus("connected");
+    watchDisconnect(joiner.pc, next);
+  }
+
+  const sidebarLists = lists.map(({ id, doc }) => ({ id, title: getListTitle(doc) }));
+  const exportLists = (): PackingList[] =>
+    lists.map(({ id, doc }) => listFromDoc(id, doc));
 
   return (
     <div className="app">
@@ -270,14 +310,22 @@ export default function App() {
         onDaysChange={handleDaysChange}
         checkedItems={checkedCount}
         totalItems={allItems.length}
-        onExport={() => exportToJson(lists, activeListId)}
+        onExport={() => exportToJson(exportLists(), activeId)}
         onImport={handleImport}
+        onShare={() =>
+          setSharingFor({
+            id: activeEntry.id,
+            doc: activeDoc,
+            title: activeList.title,
+          })
+        }
+        sessionStatus={sessionStatus}
       />
 
       <div className="app-body">
         <Sidebar
-          lists={lists}
-          activeListId={activeListId}
+          lists={sidebarLists}
+          activeListId={activeId}
           onSwitch={switchList}
           onCreate={createList}
           onRename={renameList}
@@ -292,11 +340,11 @@ export default function App() {
               days={days}
               onToggleItem={(itemId) => toggleItem(section.id, itemId)}
               onToggleAll={(checked) => toggleAll(section.id, checked)}
-              onUpdateQuantity={(itemId, qty) =>
-                updateQuantity(section.id, itemId, qty)
-              }
+              onUpdateQuantity={(itemId, qty) => updateQuantity(section.id, itemId, qty)}
               onUpdatePerDay={(itemId, pd) => updatePerDay(section.id, itemId, pd)}
-              onUpdateItemDetails={(itemId, updates) => updateItemDetails(section.id, itemId, updates)}
+              onUpdateItemDetails={(itemId, updates) =>
+                updateItemDetails(section.id, itemId, updates)
+              }
               onAddItem={(title, desc) => addItem(section.id, title, desc)}
               onRemoveItem={(itemId) => removeItem(section.id, itemId)}
               onRemoveSection={() => removeSection(section.id)}
@@ -314,6 +362,22 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {sharingFor && (
+        <ShareModal
+          listTitle={sharingFor.title}
+          onConnected={handleHostConnected}
+          onCancel={() => setSharingFor(null)}
+        />
+      )}
+
+      {joinOffer && (
+        <JoinModal
+          encodedOffer={joinOffer}
+          onConnected={handleJoinerConnected}
+          onCancel={() => setJoinOffer(null)}
+        />
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ function setup(overrides = {}) {
     totalItems: 10,
     onExport: vi.fn(),
     onImport: vi.fn(),
+    onShare: vi.fn(),
     ...overrides,
   }
   render(<AppHeader {...props} />)

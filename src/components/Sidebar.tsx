@@ -1,8 +1,7 @@
 import { useState } from "react";
-import type { PackingList } from "../data";
 
 interface SidebarProps {
-  lists: PackingList[];
+  lists: { id: string; title: string }[];
   activeListId: string;
   onSwitch: (id: string) => void;
   onCreate: () => void;
