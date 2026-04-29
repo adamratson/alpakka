@@ -29,11 +29,27 @@ export interface SyncOptions {
   clearInterval?: (handle: unknown) => void;
 }
 
+export interface SyncHandle {
+  stop: () => void;
+  /**
+   * Re-broadcast the local state vector to provoke any peers into sending
+   * back the diffs we don't have. Used when a new peer joins or a peer
+   * reconnects after going away.
+   */
+  resync: () => void;
+  /**
+   * Reset the stale-detection clock without sending anything. Useful when
+   * the transport itself reports that a peer (re)joined: we don't yet have
+   * traffic from them, but we know the connection is fresh.
+   */
+  noteActivity: () => void;
+}
+
 export function startSync(
   doc: Y.Doc,
   transport: SyncTransport,
   options: SyncOptions = {}
-): () => void {
+): SyncHandle {
   const heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
   const staleMs = options.staleMs ?? DEFAULT_STALE_MS;
   const now = options.now ?? (() => Date.now());
@@ -64,8 +80,10 @@ export function startSync(
   };
   doc.on("update", updateHandler);
 
-  const sv = Y.encodeStateVector(doc);
-  transport.send(prepend(MSG_STATE_VECTOR, sv));
+  const sendStateVector = () => {
+    transport.send(prepend(MSG_STATE_VECTOR, Y.encodeStateVector(doc)));
+  };
+  sendStateVector();
 
   const heartbeatHandle = setIntervalFn(() => {
     if (stopped) return;
@@ -80,12 +98,27 @@ export function startSync(
     }
   }, Math.max(500, Math.floor(heartbeatMs / 2)));
 
-  return () => {
-    stopped = true;
-    (clearIntervalFn as (h: unknown) => void)(heartbeatHandle);
-    (clearIntervalFn as (h: unknown) => void)(livenessHandle);
-    offMsg();
-    doc.off("update", updateHandler);
+  return {
+    stop: () => {
+      stopped = true;
+      (clearIntervalFn as (h: unknown) => void)(heartbeatHandle);
+      (clearIntervalFn as (h: unknown) => void)(livenessHandle);
+      offMsg();
+      doc.off("update", updateHandler);
+    },
+    resync: () => {
+      if (stopped) return;
+      // Reset staleness too — a fresh peer is live by definition, even
+      // before they reply.
+      lastReceived = now();
+      staleFired = false;
+      sendStateVector();
+    },
+    noteActivity: () => {
+      if (stopped) return;
+      lastReceived = now();
+      staleFired = false;
+    },
   };
 }
 

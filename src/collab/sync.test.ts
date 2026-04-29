@@ -106,9 +106,9 @@ describe("startSync", () => {
     const host = seedDoc();
     const joiner = new Y.Doc();
     const [tA, tB] = pairedTransports();
-    const stop = startSync(host, tA);
+    const handle = startSync(host, tA);
     startSync(joiner, tB);
-    stop();
+    handle.stop();
 
     ops.toggleItem(host, "s1", "i1");
     expect(listFromDoc("L", joiner).sections[0].items[0].checked).toBe(false);

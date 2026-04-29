@@ -18,8 +18,8 @@ import {
   ops,
 } from "./collab/doc";
 import { useYDocs } from "./collab/useYDocs";
-import { startSync } from "./collab/sync";
-import type { HostSession, JoinerSession } from "./collab/peer";
+import { startSync, type SyncHandle } from "./collab/sync";
+import { joinSessionRoom, type RoomHandle } from "./collab/room";
 import "./App.css";
 
 const STORAGE_INDEX = "alpakka-list-index";
@@ -30,11 +30,24 @@ interface ListEntry {
   doc: Y.Doc;
 }
 
-function loadInitial(): { lists: ListEntry[]; activeId: string } {
+interface PersistedIndex {
+  ids: string[];
+  activeId: string;
+  /** Maps local listId → Trystero room/session id when the list is shared. */
+  sessions?: Record<string, string>;
+}
+
+interface InitialState {
+  lists: ListEntry[];
+  activeId: string;
+  sessions: Record<string, string>;
+}
+
+function loadInitial(): InitialState {
   try {
     const indexRaw = localStorage.getItem(STORAGE_INDEX);
     if (indexRaw) {
-      const index = JSON.parse(indexRaw) as { ids: string[]; activeId: string };
+      const index = JSON.parse(indexRaw) as PersistedIndex;
       const lists: ListEntry[] = [];
       for (const id of index.ids) {
         const encoded = localStorage.getItem(STORAGE_LIST_PREFIX + id);
@@ -45,7 +58,7 @@ function loadInitial(): { lists: ListEntry[]; activeId: string } {
       }
       if (lists.length > 0) {
         const activeId = lists.find((l) => l.id === index.activeId)?.id ?? lists[0].id;
-        return { lists, activeId };
+        return { lists, activeId, sessions: index.sessions ?? {} };
       }
     }
 
@@ -59,7 +72,7 @@ function loadInitial(): { lists: ListEntry[]; activeId: string } {
       const activeId = localStorage.getItem("alpakka-active") ?? lists[0]?.id ?? "";
       localStorage.removeItem("alpakka-lists");
       localStorage.removeItem("alpakka-active");
-      return { lists, activeId };
+      return { lists, activeId, sessions: {} };
     }
 
     const v0Sections = localStorage.getItem("alpakka-sections");
@@ -72,7 +85,7 @@ function loadInitial(): { lists: ListEntry[]; activeId: string } {
       localStorage.removeItem("alpakka-sections");
       localStorage.removeItem("alpakka-days");
       localStorage.removeItem("alpakka-title");
-      return { lists: [{ id, doc }], activeId: id };
+      return { lists: [{ id, doc }], activeId: id, sessions: {} };
     }
   } catch {
     // fall through to seed
@@ -80,51 +93,47 @@ function loadInitial(): { lists: ListEntry[]; activeId: string } {
 
   const id = `list-${Date.now()}`;
   const doc = createListDoc({ title: "Kit list", sections: initialSections, days: 7 });
-  return { lists: [{ id, doc }], activeId: id };
+  return { lists: [{ id, doc }], activeId: id, sessions: {} };
 }
 
-interface ActiveSession {
-  listId: string;
-  role: "host" | "joiner";
-  pc: RTCPeerConnection;
-  stopSync: () => void;
+interface OpenRoom {
+  sessionId: string;
+  roomHandle: RoomHandle;
+  syncHandle: SyncHandle;
 }
 
-type SessionStatus = "connecting" | "connected" | "disconnected" | null;
+type ListSessionStatus = "waiting" | "connected";
+
+function newSessionId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
 
 export default function App() {
-  const [{ lists, activeId }, setState] = useState(loadInitial);
+  const initial = useMemo(loadInitial, []);
+  const [lists, setLists] = useState<ListEntry[]>(initial.lists);
+  const [activeId, setActiveId] = useState<string>(initial.activeId);
+  /** listId -> sessionId (only for shared lists). */
+  const [sessions, setSessions] = useState<Record<string, string>>(initial.sessions);
+  /** listId -> live status, derived from peer-join/leave events. */
+  const [roomStatus, setRoomStatus] = useState<Record<string, ListSessionStatus>>({});
   const [addingSection, setAddingSection] = useState(false);
-  const [sharingFor, setSharingFor] = useState<{ id: string; doc: Y.Doc; title: string } | null>(null);
-  const [joinOffer, setJoinOffer] = useState<string | null>(() => {
+  const [sharingFor, setSharingFor] = useState<{ id: string; title: string } | null>(null);
+  const [joinSessionId, setJoinSessionId] = useState<string | null>(() => {
     const m = window.location.hash.match(/^#join=(.+)$/);
     return m ? decodeURIComponent(m[1]) : null;
   });
-  const [session, setSession] = useState<ActiveSession | null>(null);
-  const [sessionStatus, setSessionStatus] = useState<SessionStatus>(null);
 
-  // Strip the join fragment from the URL once we've captured it, so a reload
-  // doesn't re-prompt and so the URL bar isn't cluttered.
-  useEffect(() => {
-    if (joinOffer) {
-      history.replaceState(null, "", window.location.pathname + window.location.search);
-    }
-  }, [joinOffer]);
-
-  // Detect #join=... that arrives via hash navigation in an already-open tab.
-  useEffect(() => {
-    const handler = () => {
-      const m = window.location.hash.match(/^#join=(.+)$/);
-      if (m) setJoinOffer(decodeURIComponent(m[1]));
-    };
-    window.addEventListener("hashchange", handler);
-    return () => window.removeEventListener("hashchange", handler);
-  }, []);
+  /** Live room/sync handles, kept out of React state because they're not serializable. */
+  const openRoomsRef = useRef<Record<string, OpenRoom>>({});
+  const persistedIdsRef = useRef<Set<string>>(new Set());
 
   const docs = useMemo(() => lists.map((l) => l.doc), [lists]);
   useYDocs(docs);
 
-  const persistedIdsRef = useRef<Set<string>>(new Set());
+  // Persist any doc that updates, plus the index when lists/activeId/sessions change.
   useEffect(() => {
     const handlers: { doc: Y.Doc; handler: () => void }[] = [];
     for (const { id, doc } of lists) {
@@ -142,10 +151,12 @@ export default function App() {
   }, [lists]);
 
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_INDEX,
-      JSON.stringify({ ids: lists.map((l) => l.id), activeId })
-    );
+    const index: PersistedIndex = {
+      ids: lists.map((l) => l.id),
+      activeId,
+      sessions,
+    };
+    localStorage.setItem(STORAGE_INDEX, JSON.stringify(index));
     const liveIds = new Set(lists.map((l) => l.id));
     for (const id of persistedIdsRef.current) {
       if (!liveIds.has(id)) {
@@ -153,7 +164,80 @@ export default function App() {
         persistedIdsRef.current.delete(id);
       }
     }
-  }, [lists, activeId]);
+  }, [lists, activeId, sessions]);
+
+  // Strip the join fragment once we've captured it.
+  useEffect(() => {
+    if (joinSessionId) {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, [joinSessionId]);
+
+  // Catch hash navigation in already-open tabs.
+  useEffect(() => {
+    const handler = () => {
+      const m = window.location.hash.match(/^#join=(.+)$/);
+      if (m) setJoinSessionId(decodeURIComponent(m[1]));
+    };
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+
+  // Reconcile open rooms against `sessions`. Any sessionId in `sessions`
+  // without an open room gets one. Any open room not in `sessions` is closed.
+  // This effect runs on mount with persisted sessions, and again whenever the
+  // user starts/stops sharing a list.
+  useEffect(() => {
+    const liveSessions = new Set(Object.values(sessions));
+
+    // Open rooms for newly-shared lists.
+    for (const [listId, sessionId] of Object.entries(sessions)) {
+      if (openRoomsRef.current[listId]) continue;
+      const list = lists.find((l) => l.id === listId);
+      if (!list) continue;
+
+      const roomHandle = joinSessionRoom(sessionId);
+      const syncHandle = startSync(list.doc, roomHandle.transport);
+      openRoomsRef.current[listId] = { sessionId, roomHandle, syncHandle };
+
+      roomHandle.onPeerJoin(() => {
+        // A new peer is in the room — provoke a fresh sync handshake so they
+        // pull our state.
+        syncHandle.resync();
+        setRoomStatus((cur) => ({ ...cur, [listId]: "connected" }));
+      });
+      roomHandle.onPeerLeave(() => {
+        if (roomHandle.peerCount() === 0) {
+          setRoomStatus((cur) => ({ ...cur, [listId]: "waiting" }));
+        }
+      });
+
+      // Initial status: alone until someone joins.
+      setRoomStatus((cur) => ({ ...cur, [listId]: "waiting" }));
+    }
+
+    // Tear down rooms for lists that were unshared, or whose sessionId rotated.
+    for (const listId of Object.keys(openRoomsRef.current)) {
+      const open = openRoomsRef.current[listId];
+      const stillSharedAtSameId = sessions[listId] === open.sessionId;
+      if (!stillSharedAtSameId || !liveSessions.has(open.sessionId)) {
+        open.syncHandle.stop();
+        open.roomHandle.leave().catch(() => {});
+        delete openRoomsRef.current[listId];
+        setRoomStatus((cur) => {
+          const next = { ...cur };
+          delete next[listId];
+          return next;
+        });
+      }
+    }
+  }, [sessions, lists]);
+
+  // Note: no unmount cleanup here. In dev, React StrictMode mounts the
+  // component twice and the cleanup would tear down rooms we just opened,
+  // leaving the relay confused. In production, true unmount only happens on
+  // tab close — the browser closes the underlying WebSockets and the relay
+  // times the peer out within a few seconds. Good enough for both.
 
   const activeEntry = lists.find((l) => l.id === activeId) ?? lists[0];
   if (!activeEntry) return null;
@@ -163,6 +247,9 @@ export default function App() {
   const { sections, days } = activeList;
   const allItems = sections.flatMap((s) => s.items);
   const checkedCount = allItems.filter((i) => i.checked).length;
+
+  const activeSessionId = sessions[activeEntry.id];
+  const activeStatus = activeSessionId ? roomStatus[activeEntry.id] ?? "waiting" : null;
 
   function handleDaysChange(newDays: number) {
     ops.setDays(activeDoc, newDays);
@@ -220,11 +307,10 @@ export default function App() {
           id: l.id,
           doc: createListDoc({ title: l.title, days: l.days, sections: l.sections }),
         }));
-        setState({
-          lists: newEntries,
-          activeId:
-            newEntries.find((e) => e.id === activeListId)?.id ?? newEntries[0]?.id ?? "",
-        });
+        setLists(newEntries);
+        setActiveId(
+          newEntries.find((e) => e.id === activeListId)?.id ?? newEntries[0]?.id ?? ""
+        );
       })
       .catch((err: Error) => alert(`Import failed: ${err.message}`));
   }
@@ -232,15 +318,25 @@ export default function App() {
   function createList() {
     const id = `list-${Date.now()}`;
     const doc = createListDoc({ title: "New kit list", sections: [], days: 7 });
-    setState((prev) => ({ lists: [...prev.lists, { id, doc }], activeId: id }));
+    setLists((prev) => [...prev, { id, doc }]);
+    setActiveId(id);
   }
 
   function deleteList(id: string) {
-    setState((prev) => {
-      if (prev.lists.length <= 1) return prev;
-      const filtered = prev.lists.filter((l) => l.id !== id);
-      const nextActive = id === prev.activeId ? filtered[0].id : prev.activeId;
-      return { lists: filtered, activeId: nextActive };
+    setLists((prev) => {
+      if (prev.length <= 1) return prev;
+      const filtered = prev.filter((l) => l.id !== id);
+      if (id === activeId) {
+        setActiveId(filtered[0].id);
+      }
+      return filtered;
+    });
+    // If the list was shared, also drop its session so the room gets torn down.
+    setSessions((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
     });
   }
 
@@ -251,108 +347,51 @@ export default function App() {
   }
 
   function switchList(id: string) {
-    setState((prev) => ({ ...prev, activeId: id }));
+    setActiveId(id);
   }
 
-  function endSession() {
-    if (session) {
-      session.stopSync();
-      session.pc.close();
+  function startSharingActive() {
+    const existing = sessions[activeEntry.id];
+    if (existing) {
+      // Already sharing — just show the link again.
+      setSharingFor({ id: activeEntry.id, title: activeList.title });
+      return;
     }
-    setSession(null);
-    setSessionStatus(null);
+    const sessionId = newSessionId();
+    setSessions((prev) => ({ ...prev, [activeEntry.id]: sessionId }));
+    setSharingFor({ id: activeEntry.id, title: activeList.title });
   }
 
-  function handleStale() {
-    // Same end state as the pc.connectionstatechange path, just driven by
-    // application-level liveness instead of waiting on ICE consent.
-    setSessionStatus((cur) => (cur === "connected" ? "disconnected" : cur));
+  function stopSharing(listId: string) {
+    setSessions((prev) => {
+      if (!(listId in prev)) return prev;
+      const next = { ...prev };
+      delete next[listId];
+      return next;
+    });
   }
 
-  function watchDisconnect(pc: RTCPeerConnection, next: ActiveSession) {
-    // ICE flickers briefly all the time (Wi-Fi roaming, momentary packet loss).
-    // Surfacing "disconnected" instantly produces a flashy UI for blips that
-    // recover on their own. Wait a beat before showing it; recovery cancels.
-    // "failed"/"closed" are terminal — those fire immediately.
-    const GRACE_MS = 5000;
-    let stopped = false;
-    let graceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const fire = () => {
-      if (stopped) return;
-      stopped = true;
-      next.stopSync();
-      setSessionStatus((cur) => (cur === "connected" ? "disconnected" : cur));
-    };
-
-    const cancelGrace = () => {
-      if (graceTimer) {
-        clearTimeout(graceTimer);
-        graceTimer = null;
-      }
-    };
-
-    const onChange = () => {
-      const s = pc.connectionState;
-      if (s === "connected") {
-        // Recovered from a transient flicker before the grace period expired.
-        cancelGrace();
-      } else if (s === "disconnected") {
-        if (!stopped && !graceTimer) {
-          graceTimer = setTimeout(() => {
-            graceTimer = null;
-            fire();
-          }, GRACE_MS);
-        }
-      } else if (s === "failed" || s === "closed") {
-        cancelGrace();
-        fire();
-      }
-    };
-    pc.addEventListener("connectionstatechange", onChange);
-  }
-
-  async function handleHostConnected(host: HostSession) {
-    if (!sharingFor) return;
-    endSession();
-    const { id, doc } = sharingFor;
-    const transport = await host.ready;
-    const stopSync = startSync(doc, transport, { onStale: handleStale });
-    const next: ActiveSession = { listId: id, role: "host", pc: host.pc, stopSync };
-    setSession(next);
-    setSessionStatus("connected");
-    watchDisconnect(host.pc, next);
-  }
-
-  async function handleJoinerConnected(joiner: JoinerSession) {
-    endSession();
+  function handleJoin(sessionId: string) {
+    // If we already have a list joined to this session, just switch to it.
+    const existingListId = Object.entries(sessions).find(
+      ([, sid]) => sid === sessionId
+    )?.[0];
+    if (existingListId) {
+      setActiveId(existingListId);
+      setJoinSessionId(null);
+      return;
+    }
+    // Otherwise create a new local list and tie it to the session.
     const newId = `list-${Date.now()}`;
     const newDoc = new Y.Doc();
-    setState((prev) => ({
-      lists: [...prev.lists, { id: newId, doc: newDoc }],
-      activeId: newId,
-    }));
-    const transport = await joiner.ready;
-    const stopSync = startSync(newDoc, transport, { onStale: handleStale });
-    const next: ActiveSession = { listId: newId, role: "joiner", pc: joiner.pc, stopSync };
-    setSession(next);
-    setSessionStatus("connected");
-    watchDisconnect(joiner.pc, next);
-  }
-
-  function handleLeaveSession() {
-    endSession();
-  }
-
-  function handleReshare() {
-    if (!session || session.role !== "host") return;
-    const entry = lists.find((l) => l.id === session.listId);
-    if (!entry) return;
-    endSession();
-    setSharingFor({ id: entry.id, doc: entry.doc, title: getListTitle(entry.doc) });
+    setLists((prev) => [...prev, { id: newId, doc: newDoc }]);
+    setActiveId(newId);
+    setSessions((prev) => ({ ...prev, [newId]: sessionId }));
+    setJoinSessionId(null);
   }
 
   const sidebarLists = lists.map(({ id, doc }) => ({ id, title: getListTitle(doc) }));
+  const sharedListIds = useMemo(() => new Set(Object.keys(sessions)), [sessions]);
   const exportLists = (): PackingList[] =>
     lists.map(({ id, doc }) => listFromDoc(id, doc));
 
@@ -365,23 +404,18 @@ export default function App() {
         totalItems={allItems.length}
         onExport={() => exportToJson(exportLists(), activeId)}
         onImport={handleImport}
-        onShare={() =>
-          setSharingFor({
-            id: activeEntry.id,
-            doc: activeDoc,
-            title: activeList.title,
-          })
+        onShare={startSharingActive}
+        onStopSharing={
+          activeSessionId ? () => stopSharing(activeEntry.id) : undefined
         }
-        sessionStatus={sessionStatus}
-        onLeaveSession={session ? handleLeaveSession : undefined}
-        onReshare={session?.role === "host" ? handleReshare : undefined}
+        sessionStatus={activeStatus}
       />
 
       <div className="app-body">
         <Sidebar
           lists={sidebarLists}
           activeListId={activeId}
-          sharedListId={session?.listId}
+          sharedListIds={sharedListIds}
           onSwitch={switchList}
           onCreate={createList}
           onRename={renameList}
@@ -422,16 +456,16 @@ export default function App() {
       {sharingFor && (
         <ShareModal
           listTitle={sharingFor.title}
-          onConnected={handleHostConnected}
-          onCancel={() => setSharingFor(null)}
+          sessionId={sessions[sharingFor.id] ?? ""}
+          onClose={() => setSharingFor(null)}
         />
       )}
 
-      {joinOffer && (
+      {joinSessionId && (
         <JoinModal
-          encodedOffer={joinOffer}
-          onConnected={handleJoinerConnected}
-          onCancel={() => setJoinOffer(null)}
+          sessionId={joinSessionId}
+          onJoin={handleJoin}
+          onCancel={() => setJoinSessionId(null)}
         />
       )}
     </div>

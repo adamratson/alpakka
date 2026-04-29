@@ -8,9 +8,8 @@ interface AppHeaderProps {
   onExport: () => void;
   onImport: (file: File) => void;
   onShare: () => void;
-  sessionStatus?: "connecting" | "connected" | "disconnected" | null;
-  onLeaveSession?: () => void;
-  onReshare?: () => void;
+  sessionStatus?: "waiting" | "connected" | null;
+  onStopSharing?: () => void;
 }
 
 export default function AppHeader({
@@ -22,8 +21,7 @@ export default function AppHeader({
   onImport,
   onShare,
   sessionStatus,
-  onLeaveSession,
-  onReshare,
+  onStopSharing,
 }: AppHeaderProps) {
   const [displayDays, setDisplayDays] = useState(String(days));
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,21 +66,21 @@ export default function AppHeader({
               aria-live="polite"
             >
               {sessionStatus === "connected" && "● Connected"}
-              {sessionStatus === "connecting" && "● Connecting…"}
-              {sessionStatus === "disconnected" && "● Disconnected"}
+              {sessionStatus === "waiting" && "● Waiting…"}
             </span>
           )}
-          {sessionStatus === "disconnected" && onReshare && (
-            <button className="btn btn--ghost" onClick={onReshare}>
-              Reshare
-            </button>
-          )}
-          {sessionStatus && onLeaveSession && (
-            <button className="btn btn--ghost" onClick={onLeaveSession}>
-              Leave
-            </button>
-          )}
-          {!sessionStatus && (
+          {sessionStatus ? (
+            <>
+              <button className="btn btn--ghost" onClick={onShare}>
+                Show link
+              </button>
+              {onStopSharing && (
+                <button className="btn btn--ghost" onClick={onStopSharing}>
+                  Stop sharing
+                </button>
+              )}
+            </>
+          ) : (
             <button className="btn btn--ghost" onClick={onShare}>
               Share
             </button>
