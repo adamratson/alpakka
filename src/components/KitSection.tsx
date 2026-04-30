@@ -30,7 +30,7 @@ const ChevronIcon = ({ collapsed }: { collapsed: boolean }) => (
   <svg
     viewBox="0 0 16 16"
     fill="none"
-    style={{ transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+    style={{ transform: collapsed ? "rotate(0deg)" : "rotate(90deg)", transition: "transform 0.2s" }}
   >
     <path
       d="M6 4l4 4-4 4"
