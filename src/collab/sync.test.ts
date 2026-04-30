@@ -235,4 +235,188 @@ describe("heartbeat liveness", () => {
     t.advance(60000);
     expect(count).toBe(1);
   });
+
+  it("resync resets the stale clock", () => {
+    const doc = seedDoc();
+    const transport: SyncTransport = {
+      send: () => {},
+      onMessage: () => () => {},
+    };
+    const t = fakeTimers();
+    let stale = false;
+
+    const handle = startSync(doc, transport, {
+      onStale: () => {
+        stale = true;
+      },
+      heartbeatMs: 1000,
+      staleMs: 5000,
+      now: t.now,
+      setInterval: t.setInterval,
+      clearInterval: t.clearInterval,
+    });
+
+    t.advance(4000);
+    handle.resync();
+    t.advance(4000); // 8000ms total but only 4000ms since reset
+    expect(stale).toBe(false);
+    t.advance(2000); // 6000ms since reset
+    expect(stale).toBe(true);
+  });
+
+  it("can re-arm the stale callback after a resync clears the prior stale state", () => {
+    const doc = seedDoc();
+    const transport: SyncTransport = {
+      send: () => {},
+      onMessage: () => () => {},
+    };
+    const t = fakeTimers();
+    let count = 0;
+
+    const handle = startSync(doc, transport, {
+      onStale: () => {
+        count++;
+      },
+      heartbeatMs: 1000,
+      staleMs: 5000,
+      now: t.now,
+      setInterval: t.setInterval,
+      clearInterval: t.clearInterval,
+    });
+
+    t.advance(6000);
+    expect(count).toBe(1);
+
+    handle.resync();
+    t.advance(6000);
+    expect(count).toBe(2);
+  });
+
+  it("noteActivity resets the stale clock without sending", () => {
+    const doc = seedDoc();
+    const sent: Uint8Array[] = [];
+    const t = fakeTimers();
+    let stale = false;
+
+    const handle = startSync(
+      doc,
+      {
+        send: (d) => sent.push(d),
+        onMessage: () => () => {},
+      },
+      {
+        onStale: () => {
+          stale = true;
+        },
+        heartbeatMs: 1000,
+        staleMs: 5000,
+        now: t.now,
+        setInterval: t.setInterval,
+        clearInterval: t.clearInterval,
+      }
+    );
+
+    // Drop everything sent during initial state-vector + heartbeats so we can
+    // assert noteActivity itself sends nothing.
+    t.advance(4000);
+    sent.length = 0;
+    handle.noteActivity();
+    expect(sent.length).toBe(0);
+
+    t.advance(4000);
+    expect(stale).toBe(false);
+    t.advance(2000);
+    expect(stale).toBe(true);
+  });
+
+  it("stop halts heartbeat emissions", () => {
+    const doc = seedDoc();
+    const sent: Uint8Array[] = [];
+    const t = fakeTimers();
+
+    const handle = startSync(
+      doc,
+      {
+        send: (d) => sent.push(d),
+        onMessage: () => () => {},
+      },
+      {
+        heartbeatMs: 1000,
+        staleMs: 5000,
+        now: t.now,
+        setInterval: t.setInterval,
+        clearInterval: t.clearInterval,
+      }
+    );
+
+    t.advance(2500);
+    expect(sent.length).toBeGreaterThan(0);
+
+    handle.stop();
+    sent.length = 0;
+    t.advance(10000);
+    expect(sent.length).toBe(0);
+  });
+
+  it("resync after stop is a no-op", () => {
+    const doc = seedDoc();
+    const sent: Uint8Array[] = [];
+    const t = fakeTimers();
+
+    const handle = startSync(
+      doc,
+      {
+        send: (d) => sent.push(d),
+        onMessage: () => () => {},
+      },
+      {
+        heartbeatMs: 1000,
+        staleMs: 5000,
+        now: t.now,
+        setInterval: t.setInterval,
+        clearInterval: t.clearInterval,
+      }
+    );
+
+    handle.stop();
+    sent.length = 0;
+    handle.resync();
+    expect(sent.length).toBe(0);
+  });
+});
+
+describe("state vector exchange", () => {
+  it("replies to an incoming state vector with the diff the peer needs", () => {
+    const host = seedDoc();
+    const sent: Uint8Array[] = [];
+    let receive: (d: Uint8Array) => void = () => {};
+
+    startSync(host, {
+      send: (d) => sent.push(d),
+      onMessage: (h) => {
+        receive = h;
+        return () => {};
+      },
+    });
+
+    // Drop the host's outbound initial state vector so we only inspect the
+    // reply triggered by our simulated peer message.
+    sent.length = 0;
+
+    // Peer sends MSG_STATE_VECTOR for an empty doc — "I know nothing, send me everything".
+    const peerStateVector = Y.encodeStateVector(new Y.Doc());
+    const message = new Uint8Array(peerStateVector.length + 1);
+    message[0] = 0; // MSG_STATE_VECTOR
+    message.set(peerStateVector, 1);
+    receive(message);
+
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent[0][0]).toBe(1); // MSG_UPDATE leading byte
+    expect(sent[0].length).toBeGreaterThan(1); // carries an actual update payload
+
+    // Verify the reply actually transports the host's state to a fresh doc.
+    const replicated = new Y.Doc();
+    Y.applyUpdate(replicated, sent[0].subarray(1));
+    expect(listFromDoc("L", replicated)).toEqual(listFromDoc("L", host));
+  });
 });
