@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { KitItem } from "../data";
 
 const TrashIcon = () => (
@@ -33,14 +33,16 @@ export default function ItemRow({
   onRemove,
 }: ItemRowProps) {
   const [displayQty, setDisplayQty] = useState(String(item.quantity));
+  const [prevQty, setPrevQty] = useState(item.quantity);
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(item.title);
   const [editDesc, setEditDesc] = useState(item.description);
 
-  useEffect(() => {
+  if (prevQty !== item.quantity) {
+    setPrevQty(item.quantity);
     setDisplayQty(String(item.quantity));
-  }, [item.quantity]);
+  }
 
   function commitEdit() {
     const titleTrimmed = editTitle.trim();
