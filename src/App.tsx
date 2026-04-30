@@ -5,6 +5,7 @@ import KitSectionComponent from "./components/KitSection";
 import { AddSectionForm, AddSectionButton } from "./components/AddSectionForm";
 import ShareModal from "./components/ShareModal";
 import JoinModal from "./components/JoinModal";
+import ImportModal, { type ImportMode } from "./components/ImportModal";
 import { exportToJson } from "./utils/export";
 import { getListTitle, listFromDoc, ops } from "./collab/doc";
 import { useLists } from "./hooks/useLists";
@@ -31,6 +32,7 @@ export default function App() {
 
   const [addingSection, setAddingSection] = useState(false);
   const [sharingListId, setSharingListId] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
   const [joinSessionId, setJoinSessionId] = useJoinFromUrl();
 
   if (!activeEntry) return null;
@@ -50,8 +52,13 @@ export default function App() {
     setSharingListId(activeEntry!.id);
   }
 
-  function handleImport(file: File) {
-    importLists(file).catch((err: Error) => alert(`Import failed: ${err.message}`));
+  function handleImportConfirm(mode: ImportMode) {
+    if (!pendingImport) return;
+    const file = pendingImport;
+    setPendingImport(null);
+    importLists(file, mode).catch((err: Error) =>
+      alert(`Import failed: ${err.message}`)
+    );
   }
 
   function handleJoin(sessionId: string) {
@@ -67,7 +74,7 @@ export default function App() {
         checkedItems={checkedCount}
         totalItems={allItems.length}
         onExport={() => exportToJson(exportLists(), activeId)}
-        onImport={handleImport}
+        onImport={setPendingImport}
         onShare={handleShare}
         onStopSharing={
           activeSessionId ? () => stopSharing(activeEntry.id) : undefined
@@ -140,6 +147,14 @@ export default function App() {
           sessionId={joinSessionId}
           onJoin={handleJoin}
           onCancel={() => setJoinSessionId(null)}
+        />
+      )}
+
+      {pendingImport && (
+        <ImportModal
+          fileName={pendingImport.name}
+          onImport={handleImportConfirm}
+          onCancel={() => setPendingImport(null)}
         />
       )}
     </div>

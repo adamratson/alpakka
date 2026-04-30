@@ -89,10 +89,10 @@ export default function AppHeader({
             className="btn btn--ghost"
             onClick={() => fileInputRef.current?.click()}
           >
-            Import JSON
+            Import data
           </button>
           <button className="btn btn--primary" onClick={onExport}>
-            Export JSON
+            Export data
           </button>
           <input
             ref={fileInputRef}

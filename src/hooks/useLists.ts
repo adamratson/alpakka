@@ -19,6 +19,10 @@ import {
 import { importFromJson } from "../utils/export";
 import type { PackingList } from "../data";
 
+function newListId(): string {
+  return `list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export interface UseListsResult {
   lists: ListEntry[];
   activeId: string;
@@ -29,7 +33,7 @@ export interface UseListsResult {
   createList: () => void;
   deleteList: (id: string) => void;
   renameList: (id: string, title: string) => void;
-  importLists: (file: File) => Promise<void>;
+  importLists: (file: File, mode: "merge" | "replace") => Promise<void>;
   startSharing: (listId: string) => void;
   stopSharing: (listId: string) => void;
   joinSession: (sessionId: string) => void;
@@ -141,7 +145,7 @@ export function useLists(): UseListsResult {
   const activeEntry = lists.find((l) => l.id === activeId) ?? lists[0];
 
   function createList() {
-    const id = `list-${Date.now()}`;
+    const id = newListId();
     const doc = createListDoc({ title: "New kit list", sections: [], days: 7 });
     setLists((prev) => [...prev, { id, doc }]);
     setActiveId(id);
@@ -169,16 +173,27 @@ export function useLists(): UseListsResult {
     ops.setTitle(entry.doc, title);
   }
 
-  function importLists(file: File): Promise<void> {
+  function importLists(file: File, mode: "merge" | "replace"): Promise<void> {
     return importFromJson(file).then(({ lists: imported, activeListId }) => {
-      const newEntries = imported.map((l) => ({
-        id: l.id,
+      if (mode === "replace") {
+        const newEntries = imported.map((l) => ({
+          id: l.id,
+          doc: createListDoc({ title: l.title, days: l.days, sections: l.sections }),
+        }));
+        setLists(newEntries);
+        setActiveId(
+          newEntries.find((e) => e.id === activeListId)?.id ?? newEntries[0]?.id ?? ""
+        );
+        return;
+      }
+
+      // Merge: append with fresh IDs so imported lists never overwrite existing ones.
+      const now = Date.now();
+      const newEntries = imported.map((l, i) => ({
+        id: `list-${now}-${i}`,
         doc: createListDoc({ title: l.title, days: l.days, sections: l.sections }),
       }));
-      setLists(newEntries);
-      setActiveId(
-        newEntries.find((e) => e.id === activeListId)?.id ?? newEntries[0]?.id ?? ""
-      );
+      setLists((prev) => [...prev, ...newEntries]);
     });
   }
 
@@ -207,7 +222,7 @@ export function useLists(): UseListsResult {
       return;
     }
     // Otherwise create a new local list and tie it to the session.
-    const newId = `list-${Date.now()}`;
+    const newId = newListId();
     const newDoc = new Y.Doc();
     setLists((prev) => [...prev, { id: newId, doc: newDoc }]);
     setActiveId(newId);
