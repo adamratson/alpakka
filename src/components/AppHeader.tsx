@@ -99,6 +99,7 @@ export default function AppHeader({
             type="file"
             accept=".json,application/json"
             style={{ display: "none" }}
+            aria-label="Import a packing list JSON file"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {

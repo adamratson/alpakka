@@ -57,6 +57,7 @@ export default function Sidebar({
                   if (e.key === "Enter") confirmEdit(list.id);
                   if (e.key === "Escape") setEditingId(null);
                 }}
+                aria-label="List title"
                 autoFocus
               />
             ) : (

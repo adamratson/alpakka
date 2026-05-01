@@ -44,8 +44,40 @@ describe('ItemRow', () => {
 
   it('applies checked styling when item is checked', () => {
     setup({ checked: true })
-    const li = screen.getByRole('listitem')
-    expect(li).toHaveClass('item--checked')
+    const checkBtn = screen.getByRole('button', { name: /unpack tape/i })
+    expect(checkBtn.closest('li')).toHaveClass('item--checked')
+  })
+
+  it('exposes the item as a pressed button to assistive tech when checked', () => {
+    setup({ checked: true })
+    expect(
+      screen.getByRole('button', { name: /unpack tape/i, pressed: true })
+    ).toBeInTheDocument()
+  })
+
+  it('exposes the item as an unpressed button when unchecked', () => {
+    setup({ checked: false })
+    expect(
+      screen.getByRole('button', { name: /pack tape/i, pressed: false })
+    ).toBeInTheDocument()
+  })
+
+  it('toggles via Space key when row is focused', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    const row = screen.getByRole('button', { name: /pack tape/i })
+    row.focus()
+    await user.keyboard(' ')
+    expect(props.onToggle).toHaveBeenCalled()
+  })
+
+  it('toggles via Enter key when row is focused', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    const row = screen.getByRole('button', { name: /pack tape/i })
+    row.focus()
+    await user.keyboard('{Enter}')
+    expect(props.onToggle).toHaveBeenCalled()
   })
 
   it('quantity input shows the current quantity', () => {

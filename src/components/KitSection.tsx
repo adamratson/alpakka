@@ -150,6 +150,7 @@ export default function KitSection({
                 setEditingTitle(false);
               }
             }}
+            aria-label="Section title"
             autoFocus
           />
         ) : (

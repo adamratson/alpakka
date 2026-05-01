@@ -53,33 +53,57 @@ export default function ItemRow({
     setEditing(false);
   }
 
+  function rowClick(e: React.MouseEvent) {
+    // Clicks that originate inside an inner control (button/input) or
+    // a stop-region (qty wrap, edit form, delete confirm) should not toggle.
+    const target = e.target as HTMLElement;
+    if (
+      target.closest(
+        "button, input, .item__qty-wrap, .item__edit-form, .item__delete-confirm"
+      )
+    ) {
+      return;
+    }
+    onToggle();
+  }
+
   return (
-    <li
-      className={`item ${item.checked ? "item--checked" : ""}`}
-      onClick={onToggle}
-    >
-      <span className="item__check" aria-hidden="true">
-        {item.checked ? (
-          <svg viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="7.5" stroke="currentColor" />
-            <path
-              d="M4.5 8L7 10.5L11.5 5.5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="7.5" stroke="currentColor" />
-          </svg>
-        )}
-      </span>
+    // The row's onClick is a mouse-only convenience — the keyboard-accessible
+    // toggle is the .item__check-btn below. Suppressing the lint rule because
+    // adding a redundant onKeyDown here would create two keyboard targets and
+    // confuse focus order.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
+    <li className={`item ${item.checked ? "item--checked" : ""}`} onClick={rowClick}>
+      <button
+        type="button"
+        className="item__check-btn"
+        aria-pressed={item.checked}
+        aria-label={`${item.checked ? "Unpack" : "Pack"} ${item.title}`}
+        onClick={onToggle}
+      >
+        <span className="item__check" aria-hidden="true">
+          {item.checked ? (
+            <svg viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7.5" stroke="currentColor" />
+              <path
+                d="M4.5 8L7 10.5L11.5 5.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7.5" stroke="currentColor" />
+            </svg>
+          )}
+        </span>
+      </button>
 
       <span className="item__body">
         {editing ? (
-          <div className="item__edit-form" onClick={(e) => e.stopPropagation()}>
+          <div className="item__edit-form">
             <input
               className="item__edit-input item__edit-input--title"
               type="text"
@@ -94,6 +118,7 @@ export default function ItemRow({
                   setEditing(false);
                 }
               }}
+              aria-label="Item title"
               autoFocus
             />
             <input
@@ -111,6 +136,7 @@ export default function ItemRow({
                   setEditing(false);
                 }
               }}
+              aria-label="Item description"
             />
           </div>
         ) : (
@@ -126,8 +152,7 @@ export default function ItemRow({
       {!editing && (
         <EditPencilButton
           className="item__edit"
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={() => {
             setEditTitle(item.title);
             setEditDesc(item.description);
             setEditing(true);
@@ -136,7 +161,7 @@ export default function ItemRow({
         />
       )}
 
-      <span className="item__qty-wrap" onClick={(e) => e.stopPropagation()}>
+      <span className="item__qty-wrap">
         <span className="item__qty">
           <span className="item__qty-x">×</span>
           <input
@@ -174,16 +199,16 @@ export default function ItemRow({
       </span>
 
       {confirming ? (
-        <span className="item__delete-confirm" onClick={(e) => e.stopPropagation()}>
+        <span className="item__delete-confirm">
           <button
             className="btn btn--danger btn--sm"
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            onClick={onRemove}
           >
             Remove
           </button>
           <button
             className="btn btn--ghost btn--sm"
-            onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+            onClick={() => setConfirming(false)}
           >
             Cancel
           </button>
@@ -191,7 +216,7 @@ export default function ItemRow({
       ) : (
         <button
           className="icon-btn icon-btn--danger item__delete"
-          onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
+          onClick={() => setConfirming(true)}
           title="Remove item"
           aria-label={`Remove ${item.title}`}
         >

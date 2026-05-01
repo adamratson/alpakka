@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface ShareModalProps {
   listTitle: string;
@@ -8,6 +9,7 @@ interface ShareModalProps {
 
 export default function ShareModal({ listTitle, sessionId, onClose }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
+  useEscapeKey(onClose);
 
   const url = `${window.location.origin}${window.location.pathname}#join=${encodeURIComponent(
     sessionId
@@ -26,9 +28,23 @@ export default function ShareModal({ listTitle, sessionId, onClose }: ShareModal
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 className="modal__title">Share "{listTitle}"</h2>
+    // Backdrop click-to-dismiss is a mouse convenience; keyboard users dismiss
+    // via Escape (handled by useEscapeKey above), so the missing keydown
+    // handler on this <div> is intentional.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-modal-title"
+      >
+        <h2 id="share-modal-title" className="modal__title">Share "{listTitle}"</h2>
         <p className="modal__body">
           Send this link to anyone you want to share the list with. They'll
           stay in sync as long as you both have the app open.
@@ -39,6 +55,7 @@ export default function ShareModal({ listTitle, sessionId, onClose }: ShareModal
             readOnly
             value={url}
             onFocus={(e) => e.currentTarget.select()}
+            aria-label="Shareable join link"
             data-testid="share-url"
           />
           <button className="btn btn--ghost" onClick={copyLink}>
