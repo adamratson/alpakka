@@ -189,4 +189,53 @@ describe('KitSection', () => {
     await user.click(screen.getByRole('button', { name: 'Add' }))
     expect(props.onAddItem).toHaveBeenCalledWith('Rope', '')
   })
+
+  describe('renaming the section', () => {
+    function renderForRename() {
+      const props = {
+        section: makeSection(),
+        days: 7,
+        onToggleItem: vi.fn(), onToggleAll: vi.fn(), onUpdateQuantity: vi.fn(),
+        onUpdatePerDay: vi.fn(), onUpdateItemDetails: vi.fn(), onRemoveItem: vi.fn(), onRemoveSection: vi.fn(),
+        onAddItem: vi.fn(), onRenameSection: vi.fn(),
+        index: 0, total: 1, onMoveTo: vi.fn(),
+      }
+      render(<KitSection {...props} />)
+      return props
+    }
+
+    it('clicking the pencil reveals the title input', async () => {
+      const user = userEvent.setup()
+      renderForRename()
+
+      await user.click(screen.getByRole('button', { name: /rename section/i }))
+
+      const input = screen.getByDisplayValue('Repair Kit')
+      expect(input).toBeInTheDocument()
+    })
+
+    it('committing the new title with Enter calls onRenameSection', async () => {
+      const user = userEvent.setup()
+      const props = renderForRename()
+
+      await user.click(screen.getByRole('button', { name: /rename section/i }))
+      const input = screen.getByDisplayValue('Repair Kit')
+      await user.clear(input)
+      await user.type(input, 'Tool Kit{Enter}')
+
+      expect(props.onRenameSection).toHaveBeenCalledWith('Tool Kit')
+    })
+
+    it('Escape cancels editing without calling onRenameSection', async () => {
+      const user = userEvent.setup()
+      const props = renderForRename()
+
+      await user.click(screen.getByRole('button', { name: /rename section/i }))
+      const input = screen.getByDisplayValue('Repair Kit')
+      await user.type(input, ' Updated{Escape}')
+
+      expect(props.onRenameSection).not.toHaveBeenCalled()
+      expect(screen.getByRole('heading', { name: 'Repair Kit' })).toBeInTheDocument()
+    })
+  })
 })

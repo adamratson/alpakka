@@ -1,4 +1,5 @@
 import { useState } from "react";
+import EditPencilButton from "./EditPencilButton";
 
 interface SidebarProps {
   lists: { id: string; title: string }[];
@@ -59,24 +60,36 @@ export default function Sidebar({
                 autoFocus
               />
             ) : (
-              <button
-                className={`sidebar__item ${
-                  list.id === activeListId ? "sidebar__item--active" : ""
-                }`}
-                onClick={() => onSwitch(list.id)}
-                onDoubleClick={() => startEdit(list.id, list.title)}
-              >
-                {sharedListIds?.has(list.id) && (
-                  <span
-                    className="sidebar__shared-dot"
-                    aria-label="Shared with another peer"
-                    title="Shared with another peer"
-                  >
-                    ●
-                  </span>
-                )}
-                {list.title}
-              </button>
+              <>
+                <button
+                  className={`sidebar__item ${
+                    list.id === activeListId ? "sidebar__item--active" : ""
+                  }`}
+                  onClick={() => onSwitch(list.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "F2") {
+                      e.preventDefault();
+                      startEdit(list.id, list.title);
+                    }
+                  }}
+                >
+                  {sharedListIds?.has(list.id) && (
+                    <span
+                      className="sidebar__shared-dot"
+                      aria-label="Shared with another peer"
+                      title="Shared with another peer"
+                    >
+                      ●
+                    </span>
+                  )}
+                  {list.title}
+                </button>
+                <EditPencilButton
+                  className="sidebar__edit-icon"
+                  onClick={() => startEdit(list.id, list.title)}
+                  ariaLabel={`Rename "${list.title}"`}
+                />
+              </>
             )}
 
             {deletingId === list.id ? (

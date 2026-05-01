@@ -139,3 +139,43 @@ describe('ItemRow — confirm region does not propagate clicks', () => {
     expect(props.onToggle).not.toHaveBeenCalled()
   })
 })
+
+describe('ItemRow — pencil opens edit form', () => {
+  it('clicking the pencil reveals title and description inputs', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole('button', { name: /edit tape/i }))
+    expect(screen.getByDisplayValue('Tape')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Gaffer tape')).toBeInTheDocument()
+  })
+
+  it('clicking the pencil does not toggle the item', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    await user.click(screen.getByRole('button', { name: /edit tape/i }))
+    expect(props.onToggle).not.toHaveBeenCalled()
+  })
+
+  it('committing a new title with Enter calls onUpdateDetails', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    await user.click(screen.getByRole('button', { name: /edit tape/i }))
+    const titleInput = screen.getByDisplayValue('Tape')
+    await user.clear(titleInput)
+    await user.type(titleInput, 'Duct tape{Enter}')
+    expect(props.onUpdateDetails).toHaveBeenCalledWith({
+      title: 'Duct tape',
+      description: 'Gaffer tape',
+    })
+  })
+
+  it('Escape cancels editing without calling onUpdateDetails', async () => {
+    const user = userEvent.setup()
+    const props = setup()
+    await user.click(screen.getByRole('button', { name: /edit tape/i }))
+    const titleInput = screen.getByDisplayValue('Tape')
+    await user.type(titleInput, '{Escape}')
+    expect(props.onUpdateDetails).not.toHaveBeenCalled()
+    expect(screen.getByText('Tape')).toBeInTheDocument()
+  })
+})

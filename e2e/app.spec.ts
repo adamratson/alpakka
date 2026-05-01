@@ -16,7 +16,7 @@ test('shows the app title and initial sections', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Food & Drink' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Toiletries' })).toBeVisible()
   // Sidebar should be visible with the default list
-  await expect(page.getByRole('button', { name: 'Kit list' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Kit list', exact: true })).toBeVisible()
 })
 
 test('can check and uncheck an item', async ({ page }) => {
@@ -170,16 +170,30 @@ test('cannot delete the last list', async ({ page }) => {
   await expect(deleteButtons).toHaveCount(0)
 })
 
-test('can rename a list by double-clicking', async ({ page }) => {
-  const listButton = page.getByRole('button', { name: 'Kit list' })
-  await listButton.dblclick()
-  // Should show an input
+test('can rename a list via the pencil button', async ({ page }) => {
+  const wrapper = page.locator('.sidebar__item-wrapper').first()
+  await wrapper.hover()
+  await wrapper.getByRole('button', { name: /^rename "/i }).click()
   const input = page.locator('.sidebar__edit-input')
   await expect(input).toBeVisible()
   await input.fill('My Renamed List')
   await input.blur()
-  // Should show the new name
-  await expect(page.getByRole('button', { name: 'My Renamed List' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'My Renamed List', exact: true })
+  ).toBeVisible()
+})
+
+test('can rename a list via the F2 keyboard shortcut', async ({ page }) => {
+  const listButton = page.getByRole('button', { name: 'Kit list', exact: true })
+  await listButton.focus()
+  await listButton.press('F2')
+  const input = page.locator('.sidebar__edit-input')
+  await expect(input).toBeVisible()
+  await input.fill('Keyboard Renamed')
+  await input.blur()
+  await expect(
+    page.getByRole('button', { name: 'Keyboard Renamed', exact: true })
+  ).toBeVisible()
 })
 
 test('can collapse and expand sections', async ({ page }) => {
@@ -203,39 +217,29 @@ test('can collapse and expand sections', async ({ page }) => {
   await expect(page.locator('section').first()).toContainText('Tape')
 })
 
-test('can rename a section by double-clicking title', async ({ page }) => {
-  const sectionTitle = page.locator('.kit-section__title').first()
+test('can rename a section via the pencil button', async ({ page }) => {
+  const section = page.locator('.kit-section').first()
+  await section.getByRole('button', { name: /^rename section/i }).click()
 
-  // Double-click to enter edit mode
-  await sectionTitle.dblclick()
-
-  // Should show an input
   const input = page.locator('.kit-section__title-input').first()
   await expect(input).toBeVisible()
 
-  // Edit the title
   await input.fill('My Custom Section')
   await input.blur()
 
-  // Should show the new title
   await expect(page.locator('.kit-section__title').first()).toContainText('My Custom Section')
 })
 
-test('can edit item title', async ({ page }) => {
+test('can edit item title via the pencil button', async ({ page }) => {
   const itemRow = page.locator('.item').first()
-  const itemTitle = itemRow.locator('.item__title')
+  await itemRow.hover()
+  await itemRow.getByRole('button', { name: /^edit /i }).click()
 
-  // Double-click to enter edit mode
-  await itemTitle.dblclick()
-
-  // Should show edit form
   const titleInput = itemRow.locator('.item__edit-input--title')
   await expect(titleInput).toBeVisible()
 
-  // Edit the title
   await titleInput.fill('Duct Tape')
   await titleInput.blur()
 
-  // Should show the new title
   await expect(page.getByText('Duct Tape')).toBeVisible()
 })

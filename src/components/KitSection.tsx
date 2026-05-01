@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { KitSection as KitSectionType } from "../data";
 import ItemRow from "./ItemRow";
 import AddItemForm from "./AddItemForm";
+import EditPencilButton from "./EditPencilButton";
 
 const TrashIcon = () => (
   <svg viewBox="0 0 16 16" fill="none">
@@ -152,13 +153,16 @@ export default function KitSection({
             autoFocus
           />
         ) : (
-          <h2
-            className="kit-section__title"
-            onDoubleClick={() => setEditingTitle(true)}
-            title="Double-click to rename"
-          >
-            {section.title}
-          </h2>
+          <>
+            <h2 className="kit-section__title">{section.title}</h2>
+            <EditPencilButton
+              onClick={() => {
+                setTitleInput(section.title);
+                setEditingTitle(true);
+              }}
+              ariaLabel={`Rename section "${section.title}"`}
+            />
+          </>
         )}
         <div className="kit-section__header-actions">
           {section.items.length > 0 && (

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { KitItem } from "../data";
+import EditPencilButton from "./EditPencilButton";
 
 const TrashIcon = () => (
   <svg viewBox="0 0 16 16" fill="none">
@@ -114,19 +115,26 @@ export default function ItemRow({
           </div>
         ) : (
           <>
-            <span
-              className="item__title"
-              onDoubleClick={() => setEditing(true)}
-              title="Double-click to edit"
-            >
-              {item.title}
-            </span>
+            <span className="item__title">{item.title}</span>
             {item.description && (
               <span className="item__desc">{item.description}</span>
             )}
           </>
         )}
       </span>
+
+      {!editing && (
+        <EditPencilButton
+          className="item__edit"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditTitle(item.title);
+            setEditDesc(item.description);
+            setEditing(true);
+          }}
+          ariaLabel={`Edit ${item.title}`}
+        />
+      )}
 
       <span className="item__qty-wrap" onClick={(e) => e.stopPropagation()}>
         <span className="item__qty">
