@@ -94,6 +94,7 @@ vi.mock("../utils/listStorage", async () => {
 
 import { useLists } from "./useLists";
 import * as listStorage from "../utils/listStorage";
+import { ops } from "../collab/doc";
 
 function findRoom(sessionId: string): FakeRoom {
   const room = harness.rooms.find((r) => r.sessionId === sessionId);
@@ -394,6 +395,112 @@ describe("useLists collaboration", () => {
       const calls = vi.mocked(listStorage.persistIndex).mock.calls;
       const lastCall = calls[calls.length - 1][0];
       expect(lastCall.sessions).toEqual({});
+    });
+  });
+
+  describe("merge prompt on join", () => {
+    it("raises a merge prompt when the joined list's title matches a local one", () => {
+      const { result } = renderHook(() => useLists());
+
+      // Local list named "Bike trip"
+      act(() => result.current.createList());
+      const localId = result.current.lists[0].id;
+      act(() => result.current.renameList(localId, "Bike trip"));
+
+      // Join a session — joined list starts unnamed.
+      act(() => result.current.joinSession("inbound-session"));
+      const joinedId = result.current.lists[1].id;
+      expect(result.current.mergePrompt).toBeNull();
+
+      // Sync arrives and populates the joined list's title.
+      const joinedDoc = result.current.lists[1].doc;
+      act(() => ops.setTitle(joinedDoc, "Bike trip"));
+
+      expect(result.current.mergePrompt).toEqual({
+        title: "Bike trip",
+        joinedId,
+        candidateId: localId,
+      });
+    });
+
+    it("does not raise a merge prompt when titles differ", () => {
+      const { result } = renderHook(() => useLists());
+      act(() => result.current.createList());
+      const localId = result.current.lists[0].id;
+      act(() => result.current.renameList(localId, "Bike trip"));
+
+      act(() => result.current.joinSession("inbound-session"));
+      const joinedDoc = result.current.lists[1].doc;
+      act(() => ops.setTitle(joinedDoc, "Camping trip"));
+
+      expect(result.current.mergePrompt).toBeNull();
+    });
+
+    it("acceptMerge folds the candidate into the joined list and deletes the candidate", () => {
+      const { result } = renderHook(() => useLists());
+
+      act(() => result.current.createList());
+      const localId = result.current.lists[0].id;
+      const localDoc = result.current.lists[0].doc;
+      act(() => result.current.renameList(localId, "Bike trip"));
+      act(() => ops.addSection(localDoc, "Local-only section"));
+
+      act(() => result.current.joinSession("inbound-session"));
+      const joinedDoc = result.current.lists[1].doc;
+      act(() => {
+        ops.setTitle(joinedDoc, "Bike trip");
+        ops.addSection(joinedDoc, "Shared-only section");
+      });
+      expect(result.current.mergePrompt).not.toBeNull();
+
+      act(() => result.current.acceptMerge());
+
+      expect(result.current.lists).toHaveLength(1);
+      expect(result.current.lists[0].id).not.toBe(localId);
+      expect(result.current.mergePrompt).toBeNull();
+
+      // The joined doc now contains both sections via the CRDT union.
+      const sectionTitles = joinedDoc
+        .getArray("sections")
+        .toArray()
+        .map((s) => (s as Y.Map<unknown>).get("title"));
+      expect(sectionTitles).toEqual(
+        expect.arrayContaining(["Local-only section", "Shared-only section"])
+      );
+    });
+
+    it("dismissMerge clears the prompt without modifying lists", () => {
+      const { result } = renderHook(() => useLists());
+
+      act(() => result.current.createList());
+      const localId = result.current.lists[0].id;
+      act(() => result.current.renameList(localId, "Bike trip"));
+
+      act(() => result.current.joinSession("inbound-session"));
+      const joinedDoc = result.current.lists[1].doc;
+      act(() => ops.setTitle(joinedDoc, "Bike trip"));
+      expect(result.current.mergePrompt).not.toBeNull();
+
+      act(() => result.current.dismissMerge());
+
+      expect(result.current.mergePrompt).toBeNull();
+      expect(result.current.lists).toHaveLength(2);
+    });
+
+    it("does not re-raise the prompt after dismissal when subsequent edits arrive", () => {
+      const { result } = renderHook(() => useLists());
+      act(() => result.current.createList());
+      const localId = result.current.lists[0].id;
+      act(() => result.current.renameList(localId, "Bike trip"));
+
+      act(() => result.current.joinSession("inbound-session"));
+      const joinedDoc = result.current.lists[1].doc;
+      act(() => ops.setTitle(joinedDoc, "Bike trip"));
+      act(() => result.current.dismissMerge());
+
+      // A subsequent edit on the joined doc shouldn't re-raise the prompt.
+      act(() => ops.addSection(joinedDoc, "Another section"));
+      expect(result.current.mergePrompt).toBeNull();
     });
   });
 });

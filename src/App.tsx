@@ -6,6 +6,7 @@ import { AddSectionForm, AddSectionButton } from "./components/AddSectionForm";
 import ShareModal from "./components/ShareModal";
 import JoinModal from "./components/JoinModal";
 import ImportModal, { type ImportMode } from "./components/ImportModal";
+import MergeModal from "./components/MergeModal";
 import { exportToJson } from "./utils/export";
 import { getListTitle, listFromDoc, ops } from "./collab/doc";
 import { useLists } from "./hooks/useLists";
@@ -19,6 +20,7 @@ export default function App() {
     activeEntry,
     sessions,
     roomStatus,
+    mergePrompt,
     setActiveId,
     createList,
     deleteList,
@@ -27,6 +29,8 @@ export default function App() {
     startSharing,
     stopSharing,
     joinSession,
+    acceptMerge,
+    dismissMerge,
     exportLists,
   } = useLists();
 
@@ -155,6 +159,14 @@ export default function App() {
           fileName={pendingImport.name}
           onImport={handleImportConfirm}
           onCancel={() => setPendingImport(null)}
+        />
+      )}
+
+      {mergePrompt && (
+        <MergeModal
+          title={mergePrompt.title}
+          onMerge={acceptMerge}
+          onKeepSeparate={dismissMerge}
         />
       )}
     </div>

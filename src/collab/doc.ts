@@ -105,6 +105,15 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Return a deep copy of sections with all IDs replaced by fresh random IDs. */
+export function freshenSectionIds(sections: KitSection[]): KitSection[] {
+  return sections.map((s) => ({
+    ...s,
+    id: newId("section"),
+    items: s.items.map((i) => ({ ...i, id: newId("item") })),
+  }));
+}
+
 export const ops = {
   setTitle(doc: Y.Doc, title: string) {
     doc.getMap("meta").set("title", title);

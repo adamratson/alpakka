@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 import { initialSections } from "../data";
 import type { KitSection, PackingList } from "../data";
-import { createListDoc, decodeIntoDoc, encodeDoc } from "../collab/doc";
+import { createListDoc, decodeIntoDoc, encodeDoc, freshenSectionIds } from "../collab/doc";
 
 const STORAGE_INDEX = "alpakka-list-index";
 const STORAGE_LIST_PREFIX = "alpakka-list:";
@@ -73,7 +73,7 @@ export function loadInitial(): InitialState {
   }
 
   const id = `list-${Date.now()}`;
-  const doc = createListDoc({ title: "Kit list", sections: initialSections, days: 7 });
+  const doc = createListDoc({ title: "Kit list", sections: freshenSectionIds(initialSections), days: 7 });
   return { lists: [{ id, doc }], activeId: id, sessions: {} };
 }
 

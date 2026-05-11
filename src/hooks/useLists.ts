@@ -7,7 +7,7 @@ import {
   removeListFromStorage,
   type ListEntry,
 } from "../utils/listStorage";
-import { createListDoc, listFromDoc, ops } from "../collab/doc";
+import { createListDoc, getListTitle, listFromDoc, ops } from "../collab/doc";
 import { useYDocs } from "../collab/useYDocs";
 import { startSync } from "../collab/sync";
 import { joinSessionRoom } from "../collab/room";
@@ -23,12 +23,22 @@ function newListId(): string {
   return `list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export interface MergePrompt {
+  /** Title of both the joined list and the local match — they're the same string. */
+  title: string;
+  /** The list we just joined (sync target). */
+  joinedId: string;
+  /** The pre-existing local list with the same title. */
+  candidateId: string;
+}
+
 export interface UseListsResult {
   lists: ListEntry[];
   activeId: string;
   activeEntry: ListEntry | undefined;
   sessions: Record<string, string>;
   roomStatus: Record<string, ListSessionStatus>;
+  mergePrompt: MergePrompt | null;
   setActiveId: (id: string) => void;
   createList: () => void;
   deleteList: (id: string) => void;
@@ -37,6 +47,8 @@ export interface UseListsResult {
   startSharing: (listId: string) => void;
   stopSharing: (listId: string) => void;
   joinSession: (sessionId: string) => void;
+  acceptMerge: () => void;
+  dismissMerge: () => void;
   exportLists: () => PackingList[];
 }
 
@@ -48,6 +60,10 @@ export function useLists(): UseListsResult {
   const [sessions, setSessions] = useState<Record<string, string>>(initial.sessions);
   /** Set of listIds that currently have at least one connected peer. */
   const [connectedRooms, setConnectedRooms] = useState<Record<string, boolean>>({});
+  /** When set, watch this just-joined list's doc for its first title to land
+   *  via sync, then check for a same-named local list and surface a merge prompt. */
+  const [pendingMergeCheck, setPendingMergeCheck] = useState<string | null>(null);
+  const [mergePrompt, setMergePrompt] = useState<MergePrompt | null>(null);
 
   const roomStatus = useMemo<Record<string, ListSessionStatus>>(() => {
     const out: Record<string, ListSessionStatus> = {};
@@ -142,6 +158,40 @@ export function useLists(): UseListsResult {
   // tab close — the browser closes the underlying WebSockets and the relay
   // times the peer out within a few seconds. Good enough for both.
 
+  // After a join, watch the new doc for its first title (delivered via sync).
+  // If it collides with the title of any other local list, raise a merge
+  // prompt so the user can fold their offline edits into the shared list.
+  useEffect(() => {
+    if (!pendingMergeCheck) return;
+    const entry = lists.find((l) => l.id === pendingMergeCheck);
+    if (!entry) return;
+
+    const checkForCollision = () => {
+      const incoming = getListTitle(entry.doc).trim();
+      if (!incoming) return false;
+      const collision = lists.find(
+        (l) => l.id !== pendingMergeCheck && getListTitle(l.doc).trim() === incoming
+      );
+      if (collision) {
+        setMergePrompt({
+          title: incoming,
+          joinedId: entry.id,
+          candidateId: collision.id,
+        });
+      }
+      setPendingMergeCheck(null);
+      return true;
+    };
+
+    if (checkForCollision()) return;
+
+    const handler = () => {
+      checkForCollision();
+    };
+    entry.doc.on("update", handler);
+    return () => entry.doc.off("update", handler);
+  }, [pendingMergeCheck, lists]);
+
   const activeEntry = lists.find((l) => l.id === activeId) ?? lists[0];
 
   function createList() {
@@ -227,6 +277,39 @@ export function useLists(): UseListsResult {
     setLists((prev) => [...prev, { id: newId, doc: newDoc }]);
     setActiveId(newId);
     setSessions((prev) => ({ ...prev, [newId]: sessionId }));
+    // Once sync populates the title, see whether the user already has a
+    // same-named local list and prompt for a merge.
+    setPendingMergeCheck(newId);
+  }
+
+  function acceptMerge() {
+    if (!mergePrompt) return;
+    const { joinedId, candidateId } = mergePrompt;
+    const candidate = lists.find((l) => l.id === candidateId);
+    const joined = lists.find((l) => l.id === joinedId);
+    if (!candidate || !joined) {
+      setMergePrompt(null);
+      return;
+    }
+    // Yjs CRDT: encoding the candidate as an update and applying it to the
+    // joined doc unions the two states. Sync then propagates the merged
+    // result to the rest of the room.
+    const update = Y.encodeStateAsUpdate(candidate.doc);
+    Y.applyUpdate(joined.doc, update);
+
+    setLists((prev) => prev.filter((l) => l.id !== candidateId));
+    setSessions((prev) => {
+      if (!(candidateId in prev)) return prev;
+      const next = { ...prev };
+      delete next[candidateId];
+      return next;
+    });
+    if (activeId === candidateId) setActiveId(joinedId);
+    setMergePrompt(null);
+  }
+
+  function dismissMerge() {
+    setMergePrompt(null);
   }
 
   function exportLists(): PackingList[] {
@@ -239,6 +322,7 @@ export function useLists(): UseListsResult {
     activeEntry,
     sessions,
     roomStatus,
+    mergePrompt,
     setActiveId,
     createList,
     deleteList,
@@ -247,6 +331,8 @@ export function useLists(): UseListsResult {
     startSharing,
     stopSharing,
     joinSession,
+    acceptMerge,
+    dismissMerge,
     exportLists,
   };
 }

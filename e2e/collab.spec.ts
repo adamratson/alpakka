@@ -37,6 +37,14 @@ async function shareAndJoin(host: Page, joiner: Page) {
   // Both sides should reach Connected once the relay matchmakes them.
   await expect(host.locator('.session-pill--connected')).toBeVisible({ timeout: 60_000 })
   await expect(joiner.locator('.session-pill--connected')).toBeVisible({ timeout: 60_000 })
+
+  // Both peers boot with the same seed list title ("Kit list"), so once sync
+  // populates the joined list's title the joiner sees a merge prompt. The
+  // sync-tests don't care about the merge feature — keep the lists separate.
+  const keepSeparate = joiner.getByRole('button', { name: 'Keep separate' })
+  await expect(keepSeparate).toBeVisible({ timeout: 30_000 })
+  await keepSeparate.click()
+  await expect(joiner.locator('.modal')).toBeHidden({ timeout: 5_000 })
 }
 
 test('two peers sync edits in real time', async ({ browser }) => {
@@ -85,6 +93,64 @@ test('host can Stop sharing to remove the room', async ({ browser }) => {
   await expect(host.locator('.session-pill')).toHaveCount(0)
   await expect(host.locator('.sidebar__shared-dot')).toHaveCount(0)
   await expect(host.getByRole('button', { name: 'Share' })).toBeVisible()
+
+  await hostCtx.close()
+  await joinerCtx.close()
+})
+
+test('joiner can merge their offline edits into the shared list', async ({ browser }) => {
+  test.setTimeout(180_000)
+  const hostCtx = await browser.newContext()
+  const joinerCtx = await browser.newContext()
+  const host = await freshPage(hostCtx)
+  const joiner = await freshPage(joinerCtx)
+
+  host.on('pageerror', (e) => console.log('HOST PAGEERROR:', e.message))
+  joiner.on('pageerror', (e) => console.log('JOINER PAGEERROR:', e.message))
+
+  // Joiner adds a section locally before any sharing happens.
+  await joiner.getByRole('button', { name: /add section/i }).click()
+  await joiner.getByPlaceholder('Section name').fill('Joiner-only section')
+  await joiner.getByRole('button', { name: 'Add section' }).click()
+  await expect(joiner.getByRole('heading', { name: 'Joiner-only section' })).toBeVisible()
+
+  // Host adds a different section, then shares.
+  await host.getByRole('button', { name: /add section/i }).click()
+  await host.getByPlaceholder('Section name').fill('Host-only section')
+  await host.getByRole('button', { name: 'Add section' }).click()
+  await expect(host.getByRole('heading', { name: 'Host-only section' })).toBeVisible()
+
+  // Share + join. Both peers' seed list is "Kit list" so the joiner gets a
+  // merge prompt once sync populates the title.
+  await host.getByRole('button', { name: 'Share' }).click()
+  const inviteInput = host.locator('[data-testid=share-url]')
+  await expect(inviteInput).toBeVisible({ timeout: 10_000 })
+  const inviteUrl = await inviteInput.inputValue()
+  await host.getByRole('button', { name: 'Done' }).click()
+
+  const url = new URL(inviteUrl)
+  await joiner.goto(url.pathname + url.search + url.hash)
+  await joiner.waitForLoadState('domcontentloaded')
+  await joiner.getByRole('button', { name: 'Join', exact: true }).click()
+
+  await expect(host.locator('.session-pill--connected')).toBeVisible({ timeout: 60_000 })
+  await expect(joiner.locator('.session-pill--connected')).toBeVisible({ timeout: 60_000 })
+
+  // Merge prompt should appear, naming the colliding title.
+  await expect(joiner.getByRole('dialog', { name: /merge with your existing list/i }))
+    .toBeVisible({ timeout: 30_000 })
+  await joiner.getByRole('button', { name: /merge into shared list/i }).click()
+  await expect(joiner.locator('.modal')).toBeHidden({ timeout: 5_000 })
+
+  // The joiner now has only one list, and both sections are present.
+  await expect(joiner.locator('.sidebar__item')).toHaveCount(1)
+  await expect(joiner.getByRole('heading', { name: 'Host-only section' })).toBeVisible()
+  await expect(joiner.getByRole('heading', { name: 'Joiner-only section' })).toBeVisible()
+
+  // The merge propagates back to the host via Yjs sync.
+  await expect(host.getByRole('heading', { name: 'Joiner-only section' }))
+    .toBeVisible({ timeout: 15_000 })
+  await expect(host.getByRole('heading', { name: 'Host-only section' })).toBeVisible()
 
   await hostCtx.close()
   await joinerCtx.close()
